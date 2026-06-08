@@ -1,0 +1,30 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+DerivedData/
+*.xcworkspace
+xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+
+# macOS
+.DS_Store
+
+# App artifacts
+*.app
+*.dSYM
+*.ipa
+
+# Local configuration
+AGENTS.md
+servers.json
+servers.local.json
+
+# Logs and temporary files
+*.log
+tmp/
+Temp/

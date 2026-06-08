@@ -1,0 +1,26 @@
+{
+  "remote_refresh_seconds": 60,
+  "local_refresh_seconds": 5,
+  "servers": [
+    {
+      "name": "example",
+      "host": "example.com",
+      "ssh_user": "username",
+      "ssh_port": 22,
+      "http_url": "https://example.com",
+      "http_user_agent": "ArgusDesk/0.7",
+      "enabled_checks": [
+        "ssh",
+        "ping",
+        "http",
+        "load",
+        "disk",
+        "memory",
+        "nginx",
+        "mariadb",
+        "php_fpm",
+        "memcached"
+      ]
+    }
+  ]
+}
