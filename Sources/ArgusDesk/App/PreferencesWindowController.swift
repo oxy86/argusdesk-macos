@@ -3,8 +3,9 @@ import SwiftUI
 
 /// Owns the native ArgusDesk Preferences window.
 ///
-/// The window edits app behavior settings only. Remote server definitions and
-/// credentials remain in the local JSON configuration file.
+/// The window edits app behavior settings including refresh intervals,
+/// overlay size, notification toggles, and severity thresholds. Remote
+/// server definitions remain in the local JSON configuration file.
 @MainActor
 final class PreferencesWindowController: NSWindowController {
     /// Creates the preferences window with the current settings.
@@ -25,7 +26,7 @@ final class PreferencesWindowController: NSWindowController {
 
         window.title = "ArgusDesk Preferences"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 430, height: 330))
+        window.setContentSize(NSSize(width: 460, height: 520))
         window.isReleasedWhenClosed = false
         window.center()
 
@@ -58,11 +59,32 @@ private struct PreferencesView: View {
     /// Editable remote refresh interval.
     @State private var remoteRefreshSeconds: Int
 
+    /// Editable overlay window width.
+    @State private var overlayWidth: Int
+
     /// Whether status-change notifications are enabled.
     @State private var notificationsEnabled: Bool
 
     /// Whether recovery notifications are enabled.
     @State private var recoveryNotificationsEnabled: Bool
+
+    /// Ping warning threshold (ms).
+    @State private var pingWarningMilliseconds: Double
+
+    /// Ping error threshold (ms).
+    @State private var pingErrorMilliseconds: Double
+
+    /// Usage (disk/memory) warning threshold (%).
+    @State private var usageWarningPercent: Double
+
+    /// Usage (disk/memory) error threshold (%).
+    @State private var usageErrorPercent: Double
+
+    /// Service CPU warning threshold (%).
+    @State private var serviceCPUWarningPercent: Double
+
+    /// Service CPU error threshold (%).
+    @State private var serviceCPUErrorPercent: Double
 
     /// Name of the JSON configuration source.
     let configSourceName: String
@@ -82,85 +104,194 @@ private struct PreferencesView: View {
     ) {
         _localRefreshSeconds = State(initialValue: initialPreferences.localRefreshSeconds)
         _remoteRefreshSeconds = State(initialValue: initialPreferences.remoteRefreshSeconds)
+        _overlayWidth = State(initialValue: initialPreferences.overlayWidth)
         _notificationsEnabled = State(initialValue: initialPreferences.notificationsEnabled)
         _recoveryNotificationsEnabled = State(initialValue: initialPreferences.recoveryNotificationsEnabled)
+        _pingWarningMilliseconds = State(initialValue: initialPreferences.thresholds.pingWarningMilliseconds)
+        _pingErrorMilliseconds = State(initialValue: initialPreferences.thresholds.pingErrorMilliseconds)
+        _usageWarningPercent = State(initialValue: initialPreferences.thresholds.usageWarningPercent)
+        _usageErrorPercent = State(initialValue: initialPreferences.thresholds.usageErrorPercent)
+        _serviceCPUWarningPercent = State(initialValue: initialPreferences.thresholds.serviceCPUWarningPercent)
+        _serviceCPUErrorPercent = State(initialValue: initialPreferences.thresholds.serviceCPUErrorPercent)
         self.configSourceName = configSourceName
         self.serverCount = serverCount
         self.apply = apply
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("ArgusDesk")
-                .font(.title2.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("ArgusDesk")
+                    .font(.title2.weight(.semibold))
 
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 14) {
-                GridRow {
-                    Text("Local refresh")
-                    Stepper(value: $localRefreshSeconds, in: 1...300) {
-                        Text("\(localRefreshSeconds) seconds")
-                            .frame(width: 110, alignment: .trailing)
+                // --- Refresh and display ---
+                SectionLabel(title: "Display & Refresh")
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 14) {
+                    GridRow {
+                        Text("Local refresh")
+                        Stepper("\(localRefreshSeconds) seconds", value: $localRefreshSeconds, in: 1...300)
+                    }
+                    GridRow {
+                        Text("Remote refresh")
+                        Stepper("\(remoteRefreshSeconds) seconds", value: $remoteRefreshSeconds, in: 5...3_600, step: 5)
+                    }
+                    GridRow {
+                        Text("Overlay width")
+                        Stepper("\(overlayWidth) points", value: $overlayWidth, in: 260...600)
                     }
                 }
+                .padding(.bottom, 8)
 
-                GridRow {
-                    Text("Remote refresh")
-                    Stepper(value: $remoteRefreshSeconds, in: 5...3_600, step: 5) {
-                        Text("\(remoteRefreshSeconds) seconds")
-                            .frame(width: 110, alignment: .trailing)
+                Divider()
+
+                // --- Notifications ---
+                SectionLabel(title: "Notifications")
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 14) {
+                    GridRow {
+                        Text("Status changes")
+                        Toggle("", isOn: $notificationsEnabled)
+                    }
+                    GridRow {
+                        Text("Recovery alerts")
+                        Toggle("", isOn: $recoveryNotificationsEnabled)
+                            .disabled(!notificationsEnabled)
                     }
                 }
+                .padding(.bottom, 8)
 
-                GridRow {
-                    Text("Notifications")
-                    Toggle("Status changes", isOn: $notificationsEnabled)
+                Divider()
+
+                // --- Thresholds ---
+                SectionLabel(title: "Severity Thresholds")
+
+                thresholdSection(
+                    title: "Ping Latency (ms)",
+                    warning: $pingWarningMilliseconds,
+                    error: $pingErrorMilliseconds,
+                    warnRange: 10...1000,
+                    errRange: 100...10000
+                )
+                .padding(.bottom, 8)
+
+                thresholdSection(
+                    title: "Disk / Memory Usage (%)",
+                    warning: $usageWarningPercent,
+                    error: $usageErrorPercent,
+                    warnRange: 50...95,
+                    errRange: 60...99
+                )
+                .padding(.bottom, 8)
+
+                thresholdSection(
+                    title: "Service CPU (%)",
+                    warning: $serviceCPUWarningPercent,
+                    error: $serviceCPUErrorPercent,
+                    warnRange: 1...50,
+                    errRange: 5...80
+                )
+                .padding(.bottom, 8)
+
+                Divider()
+
+                // --- Config info (read-only) ---
+                SectionLabel(title: "Configuration")
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 14) {
+                    GridRow {
+                        Text("Config file")
+                        Text(configSourceName)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    GridRow {
+                        Text("Servers")
+                        Text("\(serverCount)")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .font(.caption)
+                .padding(.bottom, 8)
 
-                GridRow {
-                    Text("Recovery alerts")
-                    Toggle("Server recovered", isOn: $recoveryNotificationsEnabled)
-                        .disabled(!notificationsEnabled)
-                }
-
-                GridRow {
-                    Text("Configuration")
-                    Text(configSourceName)
+                // --- Buttons ---
+                HStack {
+                    Text(AppVersion.displayName)
                         .foregroundStyle(.secondary)
-                }
+                        .font(.caption)
 
-                GridRow {
-                    Text("Servers")
-                    Text("\(serverCount)")
-                        .foregroundStyle(.secondary)
-                }
-            }
+                    Spacer()
 
-            Spacer()
+                    Button("Close") {
+                        dismiss()
+                    }
 
-            HStack {
-                Text(AppVersion.displayName)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button("Close") {
-                    dismiss()
-                }
-
-                Button("Apply") {
-                    apply(
-                        AppPreferences(
-                            localRefreshSeconds: localRefreshSeconds,
-                            remoteRefreshSeconds: remoteRefreshSeconds,
-                            notificationsEnabled: notificationsEnabled,
-                            recoveryNotificationsEnabled: recoveryNotificationsEnabled
+                    Button("Apply") {
+                        apply(
+                            AppPreferences(
+                                localRefreshSeconds: localRefreshSeconds,
+                                remoteRefreshSeconds: remoteRefreshSeconds,
+                                overlayWidth: overlayWidth,
+                                notificationsEnabled: notificationsEnabled,
+                                recoveryNotificationsEnabled: recoveryNotificationsEnabled,
+                                thresholds: Thresholds(
+                                    pingWarningMilliseconds: pingWarningMilliseconds,
+                                    pingErrorMilliseconds: pingErrorMilliseconds,
+                                    usageWarningPercent: usageWarningPercent,
+                                    usageErrorPercent: usageErrorPercent,
+                                    serviceCPUWarningPercent: serviceCPUWarningPercent,
+                                    serviceCPUErrorPercent: serviceCPUErrorPercent
+                                )
+                            )
                         )
-                    )
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
-                .keyboardShortcut(.defaultAction)
+                .padding(.top, 8)
+            }
+            .padding(24)
+        }
+        .frame(width: 460, height: 520)
+    }
+}
+
+/// A reusable section for a single threshold pair (warning / error).
+private struct thresholdSection: View {
+    let title: String
+    @Binding var warning: Double
+    @Binding var error: Double
+    let warnRange: ClosedRange<Double>
+    let errRange: ClosedRange<Double>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Text("Warning:")
+                        .font(.caption)
+                        .frame(width: 60, alignment: .trailing)
+                    Stepper("\(Int(warning))", value: $warning, in: warnRange)
+                }
+
+                HStack(spacing: 6) {
+                    Text("Error:")
+                        .font(.caption)
+                        .frame(width: 60, alignment: .trailing)
+                    Stepper("\(Int(error))", value: $error, in: errRange)
+                }
             }
         }
-        .padding(24)
-        .frame(width: 430, height: 330)
+    }
+}
+
+/// Simple section label.
+private struct SectionLabel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.headline)
+            .foregroundStyle(.secondary)
     }
 }

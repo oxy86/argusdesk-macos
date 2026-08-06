@@ -23,11 +23,23 @@ final class OverlayWindowController {
     /// view lets the app replace the root value model as local stats refresh.
     private var hostingView: NSHostingView<ContentView>?
 
-    /// Creates the overlay window at a sensible default size and position.
-    init(viewModel: DashboardViewModel) {
-        self.viewModel = viewModel
+    /// User action to open the Preferences window.
+    private var showPreferences: () -> Void
 
-        let size = NSSize(width: 286, height: 760)
+    /// Creates the overlay window at a sensible default size and position.
+    ///
+    /// The `overlayWidth` parameter controls the panel width in points.
+    /// The height is computed from the screen size so the panel fits
+    /// within the visible screen area.
+    init(
+        viewModel: DashboardViewModel,
+        overlayWidth: Int,
+        showPreferences: @escaping () -> Void
+    ) {
+        self.viewModel = viewModel
+        self.showPreferences = showPreferences
+
+        let size = NSSize(width: overlayWidth, height: 760)
         let frame = Self.defaultFrame(size: size)
 
         panel = NSPanel(
@@ -45,10 +57,24 @@ final class OverlayWindowController {
         panel.orderFrontRegardless()
     }
 
+    /// Resizes the overlay window to the given width.
+    ///
+    /// The height is computed from the screen size so the panel fits
+    /// within the visible screen area. The horizontal position is
+    /// anchored to the right edge of the screen.
+    func resize(width: Int) {
+        let size = NSSize(width: width, height: Int(panel.frame.height))
+        let frame = Self.defaultFrame(size: size)
+        panel.setFrame(frame, display: true)
+    }
+
     /// Replaces the rendered dashboard snapshot.
     func update(viewModel: DashboardViewModel) {
         self.viewModel = viewModel
-        hostingView?.rootView = ContentView(viewModel: viewModel)
+        hostingView?.rootView = ContentView(
+            viewModel: viewModel,
+            showPreferences: showPreferences
+        )
     }
 
     /// Applies overlay window styling and embeds the SwiftUI view tree.
@@ -67,7 +93,10 @@ final class OverlayWindowController {
         ]
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
 
-        let rootView = ContentView(viewModel: viewModel)
+        let rootView = ContentView(
+            viewModel: viewModel,
+            showPreferences: showPreferences
+        )
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = panel.contentView?.bounds ?? .zero
         hostingView.autoresizingMask = [.width, .height]

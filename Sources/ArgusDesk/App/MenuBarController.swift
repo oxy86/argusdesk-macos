@@ -8,6 +8,9 @@ import SwiftUI
 @MainActor
 final class MenuBarController: NSObject {
     /// System-owned status item displayed in the menu bar.
+    ///
+    /// Uses the global status item for reliability with the accessory
+    /// activation policy.
     private let statusItem: NSStatusItem
 
     /// Latest dashboard snapshot used to rebuild the menu.
@@ -41,11 +44,21 @@ final class MenuBarController: NSObject {
         self.showOverlay = showOverlay
         self.showPreferences = showPreferences
         self.quit = quit
+
+        // Use the global status item for reliability.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         super.init()
 
-        update(dashboard: dashboard, isRefreshing: false)
+        // Update the button and menu immediately.
+        updateButton()
+        statusItem.menu = buildMenu()
+
+        // Retry button update after a short delay in case the button
+        // wasn't available immediately.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.updateButton()
+        }
     }
 
     /// Updates the menu bar item and menu from the latest dashboard state.
@@ -63,14 +76,26 @@ final class MenuBarController: NSObject {
         }
 
         let severity = dashboard.overallSeverity
-        button.attributedTitle = NSAttributedString(
-            string: "●",
-            attributes: [
-                .foregroundColor: NSColor(severity.color),
-                .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
-            ]
-        )
-        button.toolTip = "ArgusDesk \(AppVersion.displayName): \(severity.rawValue)"
+        let color = NSColor(severity.color)
+
+        // Create a colored circle image using NSImage.
+        // This ensures the icon is visible regardless of the button's title behavior.
+        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { bounds in
+            let ctx = NSGraphicsContext.current!
+            ctx.saveGraphicsState()
+            NSColor.black.setFill()
+            let _ = NSBezierPath.fill(NSBezierPath(ovalIn: bounds))
+            color.setFill()
+            let _ = NSBezierPath.fill(NSBezierPath(ovalIn: bounds.insetBy(dx: 3, dy: 3)))
+            ctx.restoreGraphicsState()
+            return true
+        }
+        image.isTemplate = false
+
+        button.image = image
+        button.toolTip = "ArgusDesk: \(severity.rawValue)"
+        button.target = nil
+        button.action = nil
     }
 
     /// Builds the compact summary menu.
@@ -91,35 +116,26 @@ final class MenuBarController: NSObject {
         }
 
         menu.addItem(.separator())
-        let refreshItem = NSMenuItem(
+        menu.addItem(NSMenuItem(
             title: isRefreshing ? "Refreshing..." : "Refresh Now",
             action: #selector(refreshNowSelected),
             keyEquivalent: "r"
-        )
-        refreshItem.target = self
-        refreshItem.isEnabled = !isRefreshing
-        menu.addItem(refreshItem)
+        ))
 
-        let showItem = NSMenuItem(
+        menu.addItem(NSMenuItem(
             title: "Show ArgusDesk",
             action: #selector(showOverlaySelected),
             keyEquivalent: ""
-        )
-        showItem.target = self
-        menu.addItem(showItem)
+        ))
 
-        let preferencesItem = NSMenuItem(
+        menu.addItem(NSMenuItem(
             title: "Preferences",
             action: #selector(showPreferencesSelected),
             keyEquivalent: ","
-        )
-        preferencesItem.target = self
-        menu.addItem(preferencesItem)
+        ))
 
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitSelected), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitSelected), keyEquivalent: "q"))
 
         return menu
     }
@@ -156,7 +172,7 @@ final class MenuBarController: NSObject {
 private extension DashboardViewModel {
     /// Worst current remote server state.
     var overallSeverity: Severity {
-        let engine = SeverityEngine()
+        let engine = SeverityEngine(thresholds: .default)
         return engine.serverSeverity(for: servers.map { Metric(label: "server", value: $0.name, severity: $0.severity) })
     }
 

@@ -1,9 +1,18 @@
 import Foundation
 
+/// Known check identifiers that servers.json may list in enabledChecks.
+///
+/// These are the only identifiers the monitoring engine recognises. Unknown
+/// identifiers produce a validation warning instead of silently running.
+let knownCheckKeys: Set<String> = [
+    "ssh", "ping", "http", "load", "disk", "memory",
+    "nginx", "mariadb", "php_fpm", "memcached"
+]
+
 /// Top-level configuration loaded from `servers.json` or `servers.example.json`.
 ///
 /// Configuration shapes remote monitoring and default refresh intervals.
-struct AppConfig: Decodable {
+struct AppConfig: Decodable, Encodable {
     /// Default remote refresh interval when the config omits it.
     static let defaultRemoteRefreshSeconds = 60
 
@@ -21,6 +30,13 @@ struct AppConfig: Decodable {
 
     /// Decoding keys match the snake_case JSON format documented in README.
     private enum CodingKeys: String, CodingKey {
+        case remoteRefreshSeconds = "remote_refresh_seconds"
+        case localRefreshSeconds = "local_refresh_seconds"
+        case servers
+    }
+
+    /// Encoding keys also use snake_case for JSON output.
+    private enum EncodedCodingKeys: String, CodingKey {
         case remoteRefreshSeconds = "remote_refresh_seconds"
         case localRefreshSeconds = "local_refresh_seconds"
         case servers
@@ -48,7 +64,7 @@ struct AppConfig: Decodable {
 ///
 /// Defaults are intentionally conservative. The app never stores or accepts SSH
 /// passwords; the username and port only control key-based SSH targets.
-struct ServerConfig: Decodable {
+struct ServerConfig: Decodable, Encodable {
     /// Generic fallback SSH user when a server entry omits `ssh_user`.
     ///
     /// Real projects should set `ssh_user` in local `servers.json` or a future
@@ -88,6 +104,28 @@ struct ServerConfig: Decodable {
         case httpURL = "http_url"
         case httpUserAgent = "http_user_agent"
         case enabledChecks = "enabled_checks"
+    }
+
+    /// Creates a server config with all fields set explicitly.
+    ///
+    /// Convenience initialiser used by the server editor so the user can
+    /// build a `ServerConfig` from the Preferences dialog without JSON.
+    init(
+        name: String,
+        host: String,
+        sshUser: String,
+        sshPort: Int,
+        httpURL: URL?,
+        httpUserAgent: String?,
+        enabledChecks: [String]
+    ) {
+        self.name = name
+        self.host = host
+        self.sshUser = sshUser
+        self.sshPort = sshPort
+        self.httpURL = httpURL
+        self.httpUserAgent = httpUserAgent
+        self.enabledChecks = enabledChecks
     }
 
     /// Applies defaults for optional SSH settings and keeps HTTP optional.

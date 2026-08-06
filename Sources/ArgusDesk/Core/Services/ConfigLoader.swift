@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Loads local ArgusDesk configuration from the project/app directory.
 ///
@@ -14,6 +15,9 @@ struct ConfigLoader {
 
     /// Directory URLs where config files may live.
     private let searchDirectories: [URL]
+
+    /// All validation errors and warnings for the loaded configuration.
+    private var validation = ConfigValidation()
 
     /// Creates a loader rooted around the process working directory.
     ///
@@ -33,7 +37,7 @@ struct ConfigLoader {
     }
 
     /// Loads and decodes local configuration.
-    func load() throws -> LoadedConfig {
+    mutating func load() throws -> LoadedConfig {
         for directory in searchDirectories {
             let url = directory.appendingPathComponent(configFileName)
 
@@ -43,10 +47,68 @@ struct ConfigLoader {
 
             let data = try Data(contentsOf: url)
             let config = try JSONDecoder().decode(AppConfig.self, from: data)
-            return LoadedConfig(config: config, sourceURL: url)
+            validate(config)
+            return LoadedConfig(config: config, sourceURL: url, validation: validation)
         }
 
         throw ConfigLoaderError.noConfigFileFound(configFileName)
+    }
+
+    /// Validates the given configuration and populates `validation`.
+    ///
+    /// Called after successful decode so the UI can surface config problems
+    /// without crashing the app.
+    private mutating func validate(_ config: AppConfig) {
+        validation = ConfigValidation()
+
+        guard !config.servers.isEmpty else {
+            validation.warnings.append("No servers configured.")
+            return
+        }
+
+        for (index, server) in config.servers.enumerated() {
+            validate(server, index: index)
+        }
+    }
+
+    /// Validates a single server configuration entry.
+    private mutating func validate(_ server: ServerConfig, index: Int) {
+        let name = server.name.trimmingCharacters(in: .whitespaces)
+        let host = server.host.trimmingCharacters(in: .whitespaces)
+
+        // Ensure server name is present and not just whitespace.
+        if name.isEmpty {
+            validation.errors.append("Server at index \(index) has an empty name.")
+        }
+
+        // Ensure host is present and not just whitespace.
+        if host.isEmpty {
+            let displayName = name.isEmpty ? "(unnamed)" : name
+            validation.errors.append("Server \"\(displayName)\" has an empty host.")
+        }
+
+        // Validate that every enabledChecks entry is a known key.
+        let unknownChecks = Set(server.enabledChecks).subtracting(knownCheckKeys)
+        if !unknownChecks.isEmpty {
+            let checks = unknownChecks.sorted().joined(separator: ", ")
+            validation.warnings.append(
+                "Server \"\(name.isEmpty ? "(unnamed)" : name)\" has unknown check identifiers: \(checks)"
+            )
+        }
+
+        // If the server has an HTTP URL, verify it parses correctly.
+        if server.httpURL == nil, server.enabledChecks.contains("http") {
+            validation.warnings.append(
+                "Server \"\(name.isEmpty ? "(unnamed)" : name)\" has \"http\" in enabledChecks but no valid \"http_url\"."
+            )
+        }
+
+        // If enabledChecks is completely empty, warn that nothing will be checked.
+        if server.enabledChecks.isEmpty {
+            validation.warnings.append(
+                "Server \"\(name.isEmpty ? "(unnamed)" : name)\" has no enabledChecks; no checks will run."
+            )
+        }
     }
 }
 
@@ -57,6 +119,28 @@ struct LoadedConfig {
 
     /// Source file used for this config.
     let sourceURL: URL
+
+    /// Validation warnings and errors discovered while loading.
+    let validation: ConfigValidation
+}
+
+/// Configuration problems discovered during loading or validation.
+struct ConfigValidation {
+    /// Errors that indicate a problem worth surfacing to the user.
+    var errors: [String] = []
+
+    /// Warnings that indicate a potential issue but are not critical.
+    var warnings: [String] = []
+
+    /// Whether there are any problems to report.
+    var hasProblems: Bool {
+        !errors.isEmpty || !warnings.isEmpty
+    }
+
+    /// All problem messages combined.
+    var allMessages: [String] {
+        errors + warnings
+    }
 }
 
 /// Errors that can occur before monitoring starts.

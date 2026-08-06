@@ -24,14 +24,15 @@ struct RemoteMonitor {
     private let httpChecker: HTTPChecker
 
     /// Shared severity evaluator.
-    private let severityEngine = SeverityEngine()
+    private let severityEngine: SeverityEngine
 
     /// Creates a monitor for the configured servers.
-    init(servers: [ServerConfig], commandRunner: CommandRunner = CommandRunner()) {
+    init(servers: [ServerConfig], commandRunner: CommandRunner = CommandRunner(), severityEngine: SeverityEngine) {
         self.servers = servers
         self.commandRunner = commandRunner
         pingChecker = PingChecker(commandRunner: commandRunner)
         httpChecker = HTTPChecker(commandRunner: commandRunner)
+        self.severityEngine = severityEngine
     }
 
     /// Refreshes all configured servers concurrently.

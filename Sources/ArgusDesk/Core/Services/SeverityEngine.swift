@@ -3,25 +3,37 @@ import Foundation
 /// Applies ArgusDesk severity rules to check metrics.
 ///
 /// Centralized escalation lets monitoring code focus on collecting values.
-/// Thresholds are intentionally conservative and can later move into preferences.
+/// Thresholds are configurable and passed in from user preferences.
 struct SeverityEngine {
     /// Ping latency above this value is degraded but reachable.
-    private let pingWarningMilliseconds = 200.0
+    let pingWarningMilliseconds: Double
 
     /// Ping latency above this value is treated as effectively unusable.
-    private let pingErrorMilliseconds = 1_000.0
+    let pingErrorMilliseconds: Double
 
     /// Disk or memory usage at or above this value is degraded.
-    private let usageWarningPercent = 80.0
+    let usageWarningPercent: Double
 
     /// Disk or memory usage at or above this value is critical.
-    private let usageErrorPercent = 90.0
+    let usageErrorPercent: Double
 
-    /// Service CPU normalized to total system capacity at or above this value is degraded.
-    private let serviceCPUWarningPercent = 10.0
+    /// Service CPU normalized to total system capacity at or above this
+    /// value is degraded.
+    let serviceCPUWarningPercent: Double
 
-    /// Service CPU normalized to total system capacity at or above this value is critical.
-    private let serviceCPUErrorPercent = 25.0
+    /// Service CPU normalized to total system capacity at or above this
+    /// value is critical.
+    let serviceCPUErrorPercent: Double
+
+    /// Creates an engine with the user-specified thresholds.
+    init(thresholds: Thresholds) {
+        self.pingWarningMilliseconds = thresholds.pingWarningMilliseconds
+        self.pingErrorMilliseconds = thresholds.pingErrorMilliseconds
+        self.usageWarningPercent = thresholds.usageWarningPercent
+        self.usageErrorPercent = thresholds.usageErrorPercent
+        self.serviceCPUWarningPercent = thresholds.serviceCPUWarningPercent
+        self.serviceCPUErrorPercent = thresholds.serviceCPUErrorPercent
+    }
 
     /// Returns metrics with recalculated severities.
     func evaluate(metrics: [Metric]) -> [Metric] {
@@ -34,7 +46,7 @@ struct SeverityEngine {
         }
     }
 
-    /// Returns the server-level worst severity using roadmap escalation rules.
+    /// Returns the server-level worst severity using escalation rules.
     func serverSeverity(for metrics: [Metric]) -> Severity {
         if metrics.contains(where: { $0.severity == .error }) {
             return .error

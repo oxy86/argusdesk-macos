@@ -3,7 +3,7 @@ import AppKit
 /// Application lifecycle bridge for the AppKit-based app shell.
 ///
 /// The delegate owns the app controllers and coordinates configuration,
-/// monitoring refreshes, preferences, and notifications.
+/// monitoring refreshes, preferences, overlay size, and notifications.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Strong reference to the overlay controller.
@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Remote refresh interval from configuration.
     private var remoteRefreshSeconds = AppConfig.defaultRemoteRefreshSeconds
 
+    /// Overlay width in points, persisted by preferences.
+    private var overlayWidth: Int = 330
+
+    /// Configurable severity thresholds from user preferences.
+    private var thresholds = Thresholds.default
+
     /// Whether warning/error notifications are enabled.
     private var notificationsEnabled = false
 
@@ -71,12 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fallback: AppPreferences(
                 localRefreshSeconds: initialDashboard.localRefreshSeconds,
                 remoteRefreshSeconds: initialDashboard.remoteRefreshSeconds,
+                overlayWidth: 330,
                 notificationsEnabled: false,
-                recoveryNotificationsEnabled: true
+                recoveryNotificationsEnabled: true,
+                thresholds: .default
             )
         )
         localRefreshSeconds = preferences.localRefreshSeconds
         remoteRefreshSeconds = preferences.remoteRefreshSeconds
+        overlayWidth = preferences.overlayWidth
+        thresholds = preferences.thresholds
         notificationsEnabled = preferences.notificationsEnabled
         recoveryNotificationsEnabled = preferences.recoveryNotificationsEnabled
         notificationController.configure(
@@ -89,14 +99,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .updating(local: localMonitor.snapshot())
             .updating(remoteRefreshSeconds: remoteRefreshSeconds)
 
-        let controller = OverlayWindowController(viewModel: dashboardViewModel)
-        overlayWindowController = controller
-        controller.show()
+        let severityEngine = SeverityEngine(thresholds: preferences.thresholds)
+        let overlayController = OverlayWindowController(
+            viewModel: dashboardViewModel,
+            overlayWidth: overlayWidth
+        ) { [weak self] in
+            self?.showPreferences()
+        }
+        overlayWindowController = overlayController
+        overlayController.show()
 
         let menuController = MenuBarController(
             dashboard: dashboardViewModel,
             refreshNow: { [weak self] in
-                self?.refreshRemoteStatus()
+                self?.refreshRemoteStatus(severityEngine: severityEngine)
             },
             showOverlay: { [weak self] in
                 self?.overlayWindowController?.show()
@@ -112,16 +128,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         startLocalRefreshTimer()
         startRemoteRefreshTimer()
-        refreshRemoteStatus()
+        refreshRemoteStatus(severityEngine: severityEngine)
     }
 
     /// Loads configuration and converts it into the initial dashboard.
     private func loadInitialDashboard() -> InitialDashboard {
         do {
-            let loadedConfig = try ConfigLoader().load()
+            var configLoader = ConfigLoader()
+            let loadedConfig = try configLoader.load()
             let viewModel = DashboardViewModel.pending(
                 config: loadedConfig.config,
-                configSource: loadedConfig.sourceURL
+                configSource: loadedConfig.sourceURL,
+                validation: loadedConfig.validation
             )
             return InitialDashboard(
                 viewModel: viewModel,
@@ -142,7 +160,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Starts the independent local Mac refresh loop.
+    /// Captures fresh local status and updates the overlay.
+    private func refreshLocalStatus() {
+        dashboardViewModel = dashboardViewModel.updating(local: localMonitor.snapshot())
+        overlayWindowController?.update(viewModel: dashboardViewModel)
+        updateMenuBar()
+    }
+
+    /// Starts the local refresh timer.
     private func startLocalRefreshTimer() {
         localRefreshTimer?.invalidate()
 
@@ -154,13 +179,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Captures fresh local status and updates the overlay.
-    private func refreshLocalStatus() {
-        dashboardViewModel = dashboardViewModel.updating(local: localMonitor.snapshot())
-        overlayWindowController?.update(viewModel: dashboardViewModel)
-        updateMenuBar()
-    }
-
     /// Starts the remote server refresh loop.
     private func startRemoteRefreshTimer() {
         remoteRefreshTimer?.invalidate()
@@ -168,20 +186,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let interval = TimeInterval(max(1, remoteRefreshSeconds))
         remoteRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.refreshRemoteStatus()
+                self?.refreshRemoteStatus(severityEngine: SeverityEngine(thresholds: self?.thresholds ?? .default))
             }
         }
     }
 
     /// Refreshes remote server rows without overlapping runs.
-    private func refreshRemoteStatus() {
+    private func refreshRemoteStatus(severityEngine: SeverityEngine) {
         guard !serverConfigs.isEmpty, !isRemoteRefreshRunning else {
             return
         }
 
         isRemoteRefreshRunning = true
         updateMenuBar()
-        let monitor = RemoteMonitor(servers: serverConfigs)
+        let monitor = RemoteMonitor(
+            servers: serverConfigs,
+            severityEngine: severityEngine
+        )
 
         Task {
             let serverStatuses = await monitor.refreshAll()
@@ -216,8 +237,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let preferences = AppPreferences(
             localRefreshSeconds: localRefreshSeconds,
             remoteRefreshSeconds: remoteRefreshSeconds,
+            overlayWidth: overlayWidth,
             notificationsEnabled: notificationsEnabled,
-            recoveryNotificationsEnabled: recoveryNotificationsEnabled
+            recoveryNotificationsEnabled: recoveryNotificationsEnabled,
+            thresholds: .default
         )
 
         let controller = PreferencesWindowController(
@@ -237,6 +260,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesStore.save(preferences)
         localRefreshSeconds = preferences.localRefreshSeconds
         remoteRefreshSeconds = preferences.remoteRefreshSeconds
+        overlayWidth = preferences.overlayWidth
+        overlayWindowController?.resize(width: overlayWidth)
+        thresholds = preferences.thresholds
         notificationsEnabled = preferences.notificationsEnabled
         recoveryNotificationsEnabled = preferences.recoveryNotificationsEnabled
         notificationController.configure(
@@ -284,3 +310,4 @@ private extension AppDelegate {
         return formatter
     }()
 }
+

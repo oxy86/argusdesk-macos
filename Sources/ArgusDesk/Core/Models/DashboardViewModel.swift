@@ -14,6 +14,12 @@ struct DashboardViewModel {
     /// Human-readable remote refresh interval shown near the server list.
     let remoteRefreshInterval: String
 
+    /// Validation problems discovered when loading configuration.
+    ///
+    /// nil means the config has not been loaded yet. An empty but non-nil
+    /// value means the config is valid and there are no warnings.
+    let configValidation: ConfigValidation?
+
     /// Creates a copy with fresh local Mac status.
     ///
     /// Keeping this as a value-model helper lets the AppKit timer replace just
@@ -23,7 +29,8 @@ struct DashboardViewModel {
             local: newLocalStatus,
             servers: servers,
             lastRefresh: lastRefresh,
-            remoteRefreshInterval: remoteRefreshInterval
+            remoteRefreshInterval: remoteRefreshInterval,
+            configValidation: configValidation
         )
     }
 
@@ -36,7 +43,8 @@ struct DashboardViewModel {
             local: local,
             servers: newServers,
             lastRefresh: newLastRefresh,
-            remoteRefreshInterval: remoteRefreshInterval
+            remoteRefreshInterval: remoteRefreshInterval,
+            configValidation: configValidation
         )
     }
 
@@ -46,7 +54,8 @@ struct DashboardViewModel {
             local: local,
             servers: servers,
             lastRefresh: lastRefresh,
-            remoteRefreshInterval: "\(remoteRefreshSeconds)s"
+            remoteRefreshInterval: "\(remoteRefreshSeconds)s",
+            configValidation: configValidation
         )
     }
 
@@ -64,16 +73,22 @@ struct DashboardViewModel {
         ),
         servers: [],
         lastRefresh: "not refreshed",
-        remoteRefreshInterval: "\(AppConfig.defaultRemoteRefreshSeconds)s"
+        remoteRefreshInterval: "\(AppConfig.defaultRemoteRefreshSeconds)s",
+        configValidation: nil
     )
 
     /// Builds the initial pending dashboard from loaded configuration.
-    static func pending(config: AppConfig, configSource: URL) -> DashboardViewModel {
+    static func pending(
+        config: AppConfig,
+        configSource: URL,
+        validation: ConfigValidation?
+    ) -> DashboardViewModel {
         return DashboardViewModel(
             local: empty.local,
             servers: config.servers.map(ServerStatus.pending(from:)),
             lastRefresh: configSource.lastPathComponent,
-            remoteRefreshInterval: "\(config.remoteRefreshSeconds)s"
+            remoteRefreshInterval: "\(config.remoteRefreshSeconds)s",
+            configValidation: validation
         )
     }
 }

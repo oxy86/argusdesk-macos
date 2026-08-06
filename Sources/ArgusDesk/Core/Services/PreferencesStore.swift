@@ -12,11 +12,65 @@ struct AppPreferences {
     /// Remote server refresh interval in seconds.
     let remoteRefreshSeconds: Int
 
-    /// Whether warning/error state changes should send notifications.
+    /// Overlay window width in points.
+    let overlayWidth: Int
+
+    /// Whether warning/error notifications are enabled.
     let notificationsEnabled: Bool
 
-    /// Whether recovery transitions should send notifications.
+    /// Whether recovery notifications are enabled.
     let recoveryNotificationsEnabled: Bool
+
+    /// Severity thresholds that control when checks report warnings or errors.
+    let thresholds: Thresholds
+}
+
+/// Configurable severity thresholds for monitoring metrics.
+struct Thresholds: Sendable {
+    /// Ping latency (ms) above which the metric is degraded.
+    let pingWarningMilliseconds: Double
+
+    /// Ping latency (ms) above which the metric is critical.
+    let pingErrorMilliseconds: Double
+
+    /// Disk or memory usage (%) above which the metric is degraded.
+    let usageWarningPercent: Double
+
+    /// Disk or memory usage (%) above which the metric is critical.
+    let usageErrorPercent: Double
+
+    /// Service CPU (%) above which the metric is degraded.
+    let serviceCPUWarningPercent: Double
+
+    /// Service CPU (%) above which the metric is critical.
+    let serviceCPUErrorPercent: Double
+
+    /// Creates thresholds with default (conservative) values.
+    static let `default` = Thresholds(
+        pingWarningMilliseconds: 200,
+        pingErrorMilliseconds: 1000,
+        usageWarningPercent: 80,
+        usageErrorPercent: 90,
+        serviceCPUWarningPercent: 10,
+        serviceCPUErrorPercent: 25
+    )
+
+    /// Creates thresholds with the given values.
+    init(
+        pingWarningMilliseconds: Double = 200,
+        pingErrorMilliseconds: Double = 1000,
+        usageWarningPercent: Double = 80,
+        usageErrorPercent: Double = 90,
+        serviceCPUWarningPercent: Double = 10,
+        serviceCPUErrorPercent: Double = 25
+    ) {
+        self.pingWarningMilliseconds = pingWarningMilliseconds
+        self.pingErrorMilliseconds = pingErrorMilliseconds
+        self.usageWarningPercent = usageWarningPercent
+        self.usageErrorPercent = usageErrorPercent
+        self.serviceCPUWarningPercent = serviceCPUWarningPercent
+        self.serviceCPUErrorPercent = serviceCPUErrorPercent
+    }
 }
 
 /// Reads and writes app preferences with `UserDefaults`.
@@ -25,8 +79,15 @@ struct PreferencesStore {
     private enum Key {
         static let localRefreshSeconds = "localRefreshSeconds"
         static let remoteRefreshSeconds = "remoteRefreshSeconds"
+        static let overlayWidth = "overlayWidth"
         static let notificationsEnabled = "notificationsEnabled"
         static let recoveryNotificationsEnabled = "recoveryNotificationsEnabled"
+        static let pingWarningMilliseconds = "pingWarningMilliseconds"
+        static let pingErrorMilliseconds = "pingErrorMilliseconds"
+        static let usageWarningPercent = "usageWarningPercent"
+        static let usageErrorPercent = "usageErrorPercent"
+        static let serviceCPUWarningPercent = "serviceCPUWarningPercent"
+        static let serviceCPUErrorPercent = "serviceCPUErrorPercent"
     }
 
     /// Defaults database used for persistence.
@@ -42,8 +103,17 @@ struct PreferencesStore {
         AppPreferences(
             localRefreshSeconds: positiveInteger(forKey: Key.localRefreshSeconds) ?? fallback.localRefreshSeconds,
             remoteRefreshSeconds: positiveInteger(forKey: Key.remoteRefreshSeconds) ?? fallback.remoteRefreshSeconds,
+            overlayWidth: positiveInteger(forKey: Key.overlayWidth) ?? fallback.overlayWidth,
             notificationsEnabled: storedBoolean(forKey: Key.notificationsEnabled) ?? fallback.notificationsEnabled,
-            recoveryNotificationsEnabled: storedBoolean(forKey: Key.recoveryNotificationsEnabled) ?? fallback.recoveryNotificationsEnabled
+            recoveryNotificationsEnabled: storedBoolean(forKey: Key.recoveryNotificationsEnabled) ?? fallback.recoveryNotificationsEnabled,
+            thresholds: Thresholds(
+                pingWarningMilliseconds: storedDouble(forKey: Key.pingWarningMilliseconds, default: fallback.thresholds.pingWarningMilliseconds),
+                pingErrorMilliseconds: storedDouble(forKey: Key.pingErrorMilliseconds, default: fallback.thresholds.pingErrorMilliseconds),
+                usageWarningPercent: storedDouble(forKey: Key.usageWarningPercent, default: fallback.thresholds.usageWarningPercent),
+                usageErrorPercent: storedDouble(forKey: Key.usageErrorPercent, default: fallback.thresholds.usageErrorPercent),
+                serviceCPUWarningPercent: storedDouble(forKey: Key.serviceCPUWarningPercent, default: fallback.thresholds.serviceCPUWarningPercent),
+                serviceCPUErrorPercent: storedDouble(forKey: Key.serviceCPUErrorPercent, default: fallback.thresholds.serviceCPUErrorPercent)
+            )
         )
     }
 
@@ -51,8 +121,15 @@ struct PreferencesStore {
     func save(_ preferences: AppPreferences) {
         defaults.set(max(1, preferences.localRefreshSeconds), forKey: Key.localRefreshSeconds)
         defaults.set(max(1, preferences.remoteRefreshSeconds), forKey: Key.remoteRefreshSeconds)
+        defaults.set(max(150, preferences.overlayWidth), forKey: Key.overlayWidth)
         defaults.set(preferences.notificationsEnabled, forKey: Key.notificationsEnabled)
         defaults.set(preferences.recoveryNotificationsEnabled, forKey: Key.recoveryNotificationsEnabled)
+        defaults.set(preferences.thresholds.pingWarningMilliseconds, forKey: Key.pingWarningMilliseconds)
+        defaults.set(preferences.thresholds.pingErrorMilliseconds, forKey: Key.pingErrorMilliseconds)
+        defaults.set(preferences.thresholds.usageWarningPercent, forKey: Key.usageWarningPercent)
+        defaults.set(preferences.thresholds.usageErrorPercent, forKey: Key.usageErrorPercent)
+        defaults.set(preferences.thresholds.serviceCPUWarningPercent, forKey: Key.serviceCPUWarningPercent)
+        defaults.set(preferences.thresholds.serviceCPUErrorPercent, forKey: Key.serviceCPUErrorPercent)
     }
 
     /// Returns a stored positive integer, ignoring invalid defaults.
@@ -63,6 +140,15 @@ struct PreferencesStore {
 
         let value = defaults.integer(forKey: key)
         return value > 0 ? value : nil
+    }
+
+    /// Returns a stored double, ignoring invalid defaults.
+    private func storedDouble(forKey key: String, default: Double) -> Double {
+        guard defaults.object(forKey: key) != nil else {
+            return `default`
+        }
+
+        return defaults.double(forKey: key)
     }
 
     /// Returns a stored Boolean only when the key has been explicitly saved.
