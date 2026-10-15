@@ -15,6 +15,7 @@ xcuserdata/
 .DS_Store
 
 # App artifacts
+build/
 *.app
 *.dSYM
 *.ipa
@@ -23,6 +24,16 @@ xcuserdata/
 AGENTS.md
 servers.json
 servers.local.json
+
+# Signing credentials and local environment files
+*.p12
+*.pfx
+*.pem
+*.key
+*.keychain*
+*.mobileprovision
+.env
+.env.*
 
 # Logs and temporary files
 *.log

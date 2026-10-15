@@ -1,0 +1,183 @@
+name: Build ArgusDesk disk image
+
+# Manual runs produce development artifacts only. Publishing requires pushing
+# a version tag whose commit is already on main.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source and history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag, version, and release branch
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          fi
+          python3 - <<'PY'
+          import os, pathlib, plistlib, re
+          source = pathlib.Path("Sources/ArgusDesk/Core/AppVersion.swift").read_text()
+          version = re.search(r'static let current = "([0-9]+\.[0-9]+(?:\.[0-9]+)?)"', source).group(1)
+          info = plistlib.loads(pathlib.Path("Info.plist").read_bytes())
+          assert info["CFBundleShortVersionString"] == version, "App/plist version mismatch"
+          assert info["CFBundleVersion"] == version, "Build version mismatch"
+          if os.environ["GITHUB_EVENT_NAME"] == "push":
+              assert os.environ["GITHUB_REF_NAME"] == "v" + version, "Tag/app version mismatch"
+              changelog = pathlib.Path("CHANGELOG.md").read_text()
+              assert re.search(r"^## " + re.escape(version) + r"$", changelog, re.M), "Finalize the changelog before tagging"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+          PY
+
+      - name: Check release credentials
+        if: github.event_name == 'push'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for key in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD AC_APPLE_ID AC_TEAM_ID AC_PASSWORD; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing repository secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Test native macOS build
+        run: swift test --configuration release
+
+      - name: Build universal release app
+        run: |
+          ./build_app.sh release universal
+          lipo build/ArgusDesk.app/Contents/MacOS/ArgusDesk -verify_arch arm64 x86_64
+          codesign --verify --deep --strict build/ArgusDesk.app
+
+      - name: Sign app with Developer ID
+        if: github.event_name == 'push'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/argusdesk-signing.keychain-db"
+          certificate="$RUNNER_TEMP/argusdesk-certificate.p12"
+          keychain_password="$(openssl rand -hex 24)"
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          # Keep system keychains available for certificate-chain validation.
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          trap 'rm -f "$certificate"' EXIT
+          printf '%s' "$MACOS_CERTIFICATE" | /usr/bin/base64 --decode > "$certificate"
+          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | sed -nE '/Developer ID Application:/s/.*"(.*)".*/\1/p' | head -n 1)"
+          [[ -n "$identity" && "$identity" == *"($AC_TEAM_ID)" ]]
+          echo "SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          codesign --force --options runtime --timestamp --sign "$identity" build/ArgusDesk.app
+          codesign --verify --deep --strict --verbose=2 build/ArgusDesk.app
+
+      - name: Create disk image
+        id: dmg
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          suffix=""
+          if [[ "$GITHUB_EVENT_NAME" != push ]]; then suffix="-development"; fi
+          name="ArgusDesk-${APP_VERSION}-universal${suffix}.dmg"
+          bash Scripts/package-dmg.sh build/ArgusDesk.app "build/$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Sign, notarize, and staple disk image
+        if: github.event_name == 'push'
+        env:
+          DMG_NAME: ${{ steps.dmg.outputs.name }}
+          AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          dmg="build/$DMG_NAME"
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$dmg"
+          xcrun notarytool submit "$dmg" --apple-id "$AC_APPLE_ID" --team-id "$AC_TEAM_ID" \
+            --password "$AC_PASSWORD" --wait --timeout 30m --output-format json > "$RUNNER_TEMP/notarization.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          result = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "notarization.json").read_text())
+          assert result.get("status") == "Accepted", f"Notarization failed: {result.get('status')} ({result.get('id')})"
+          PY
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+
+      - name: Calculate final checksum
+        env:
+          DMG_NAME: ${{ steps.dmg.outputs.name }}
+        run: |
+          cd build
+          shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256"
+
+      - name: Preserve disk image as workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ArgusDesk-${{ steps.version.outputs.version }}-macOS
+          path: |
+            build/${{ steps.dmg.outputs.name }}
+            build/${{ steps.dmg.outputs.name }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish verified assets to GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMG_NAME: ${{ steps.dmg.outputs.name }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # A failed build/notarization never creates a public release. Do not
+          # overwrite existing assets: a released tag should remain immutable.
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --draft --title "ArgusDesk $APP_VERSION" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            "build/$DMG_NAME" "build/$DMG_NAME.sha256"
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/argusdesk-certificate.p12"
+          keychain="$RUNNER_TEMP/argusdesk-signing.keychain-db"
+          if [[ -f "$keychain" ]]; then security delete-keychain "$keychain"; fi
