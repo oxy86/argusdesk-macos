@@ -2,7 +2,7 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
-## 0.8 (Unreleased)
+## 0.8
 
 - Replaced the desktop overlay with a standard macOS window, Dock icon, and
   App Switcher support; monitoring continues when windows are hidden or closed.
@@ -27,6 +27,7 @@ All notable changes to ArgusDesk for macOS are documented in this file.
 - Added native per-metric warning, critical, and optional recovery notifications,
   threshold details, repeat suppression, foreground banners, and a test action.
 - Fixed dashboard observation so completed monitoring results update the window.
+- Fixed notification and menu icon concurrency compatibility across macOS SDKs.
 - Added application packaging scripts, metadata, and icons.
 - Added a universal Apple silicon/Intel DMG workflow with tag/main/version
   validation, Developer ID signing, notarization, checksums, and release upload.

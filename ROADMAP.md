@@ -1,13 +1,11 @@
 # ArgusDesk for macOS Roadmap
 
-This roadmap tracks work beyond the upcoming 0.8 release. Implemented changes
+This roadmap tracks work beyond the current 0.8 release. Implemented changes
 and release history are documented in [CHANGELOG.md](CHANGELOG.md); technical
 details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
 ## Distribution
 
-- Validate the DMG workflow on GitHub, then verify Developer ID signing and
-  notarization during the first tagged release.
 - Check installation, upgrades, login startup, and notification authorization
   using a downloaded release on a clean Mac.
 
