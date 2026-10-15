@@ -41,7 +41,7 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
         do {
             var settings = await permissionSnapshot(center)
             if settings.needsAuthorization {
-                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                let granted = try await requestPermission(center)
                 if !granted { return "Permission was not granted. Enable ArgusDesk in macOS Notification Settings." }
                 settings = await permissionSnapshot(center)
             }
@@ -55,13 +55,35 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
             content.threadIdentifier = "ArgusDesk-test"
             let request = UNNotificationRequest(identifier: "test-" + UUID().uuidString,
                 content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
-            try await center.add(request)
+            try await schedule(request, using: center)
             if !settings.bannersEnabled {
                 return "Test scheduled, but banners are disabled. Choose Banners or Alerts in macOS Notification Settings."
             }
             return "Test scheduled for two seconds from now. If no banner appears, check Notification Center and Focus settings."
         } catch {
             return "Could not send the test notification: \(error.localizedDescription)"
+        }
+    }
+
+    /// Keep the SDK center on the main actor even when its older async overlay
+    /// lacks Sendable annotations. Only a Bool/error leaves the system callback.
+    private func requestPermission(_ center: UNUserNotificationCenter) async throws -> Bool {
+        try await withCheckedThrowingContinuation { continuation in
+            center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: granted) }
+            }
+        }
+    }
+
+    /// The request and center stay actor-owned; the callback returns no SDK
+    /// objects, matching the same boundary used for permission snapshots.
+    private func schedule(_ request: UNNotificationRequest, using center: UNUserNotificationCenter) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            center.add(request) { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: ()) }
+            }
         }
     }
 
