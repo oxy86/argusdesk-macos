@@ -2,6 +2,14 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 0.8.1
+
+- Fixed a startup crash when notifications were already enabled. Notification
+  completion handlers now safely accept callbacks on system background queues,
+  including when built with older macOS SDKs.
+- Added a regression test for notification authorization during startup with
+  alerts enabled and a background callback.
+
 ## 0.8
 
 - Replaced the desktop overlay with a standard macOS window, Dock icon, and

@@ -1,6 +1,6 @@
 # ArgusDesk for macOS Roadmap
 
-This roadmap tracks work beyond the current 0.8 release. Implemented changes
+This roadmap tracks work beyond the current 0.8.1 release. Implemented changes
 and release history are documented in [CHANGELOG.md](CHANGELOG.md); technical
 details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
