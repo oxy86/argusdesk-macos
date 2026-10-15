@@ -5,24 +5,38 @@ import UserNotifications
 /// Delivery remains subject to the user's Notifications and Focus settings.
 @MainActor
 final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
+    /// The explicit Sendable callback is required even with older SDKs whose
+    /// imported completion-handler types do not advertise concurrency safety.
+    typealias AuthorizationRequest = (@escaping @Sendable (Bool, Error?) -> Void) -> Void
     private let center: UNUserNotificationCenter?
+    private let authorizationRequest: AuthorizationRequest
     private var tracker = MetricAlerts()
     private var enabled = false
     private var recovery = true
     var showDashboard: (() -> Void)?
 
-    override init() {
-        center = Bundle.main.bundleURL.pathExtension == "app" ? .current() : nil
+    init(authorizationRequest: AuthorizationRequest? = nil) {
+        let nativeCenter: UNUserNotificationCenter? = Bundle.main.bundleURL.pathExtension == "app" ? .current() : nil
+        center = nativeCenter
+        // Injection lets tests exercise startup callbacks from a background
+        // queue without requiring notification permission or a bundled runner.
+        self.authorizationRequest = authorizationRequest ?? { completion in
+            guard let nativeCenter else { completion(false, nil); return }
+            nativeCenter.requestAuthorization(options: [.alert, .sound], completionHandler: completion)
+        }
         super.init()
         center?.delegate = self
     }
 
+    // Explicit @Sendable on every system callback prevents older SDKs from
+    // inferring main-actor isolation for closures called on Apple's background
+    // queues. Actor-owned state is never accessed directly in these callbacks.
     func configure(notificationsEnabled: Bool, recoveryNotificationsEnabled: Bool) {
         if notificationsEnabled && !enabled { tracker = MetricAlerts() }
         enabled = notificationsEnabled
         recovery = recoveryNotificationsEnabled
         guard enabled else { return }
-        center?.requestAuthorization(options: [.alert, .sound]) { _, error in
+        authorizationRequest { @Sendable _, error in
             if let error { print("Notification authorization: \(error.localizedDescription)") }
         }
     }
@@ -69,7 +83,7 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
     /// lacks Sendable annotations. Only a Bool/error leaves the system callback.
     private func requestPermission(_ center: UNUserNotificationCenter) async throws -> Bool {
         try await withCheckedThrowingContinuation { continuation in
-            center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            center.requestAuthorization(options: [.alert, .sound]) { @Sendable granted, error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume(returning: granted) }
             }
@@ -80,7 +94,7 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
     /// objects, matching the same boundary used for permission snapshots.
     private func schedule(_ request: UNNotificationRequest, using center: UNUserNotificationCenter) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            center.add(request) { error in
+            center.add(request) { @Sendable error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume(returning: ()) }
             }
@@ -92,7 +106,7 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
     /// back to the main actor, rather than passing the SDK object across actors.
     private func permissionSnapshot(_ center: UNUserNotificationCenter) async -> NotificationPermissionSnapshot {
         await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
+            center.getNotificationSettings { @Sendable settings in
                 continuation.resume(returning: NotificationPermissionSnapshot(
                     needsAuthorization: settings.authorizationStatus == .notDetermined,
                     authorized: settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional,
@@ -108,7 +122,7 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
         content.body = alert.body
         content.threadIdentifier = alert.server
         content.sound = .default
-        center?.add(UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil)) { error in
+        center?.add(UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil)) { @Sendable error in
             if let error { print("Notification delivery: \(error.localizedDescription)") }
         }
     }
