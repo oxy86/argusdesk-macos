@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root SwiftUI view for the overlay.
+/// Root SwiftUI view for the main window.
 ///
 /// The view is intentionally narrow and dense. It renders local Mac information
 /// first, followed by remote server status, matching the agreed desktop
@@ -116,17 +116,12 @@ private struct ConfigValidationView: View {
     }
 }
 
-/// Dark translucent panel material used behind the overlay content.
+/// Opaque black background behind the window content.
 ///
-/// This custom drawing keeps the overlay look predictable from a
+/// This custom drawing keeps the panel look predictable from a
 /// SwiftPM-launched executable.
 private struct PanelBackground: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.black.opacity(0.58))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
+        Color.black
     }
 }

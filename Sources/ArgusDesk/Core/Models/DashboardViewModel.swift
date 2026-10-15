@@ -2,7 +2,7 @@ import Foundation
 
 /// Complete data snapshot rendered by the dashboard.
 struct DashboardViewModel {
-    /// Local Mac status shown at the top of the overlay.
+    /// Local Mac status shown at the top of the window.
     let local: LocalStatus
 
     /// Remote server summaries shown as the primary body of the widget.
@@ -59,6 +59,24 @@ struct DashboardViewModel {
         )
     }
 
+    /// Creates a copy with a new config, fresh pending servers, and new validation.
+    ///
+    /// Called when the user changes the configuration file path in Preferences.
+    /// Preserves the most recent local Mac status and the last-refresh timestamp.
+    func replacing(
+        config: AppConfig,
+        servers: [ServerConfig],
+        validation: ConfigValidation?
+    ) -> DashboardViewModel {
+        DashboardViewModel(
+            local: local,
+            servers: servers.map(ServerStatus.pending(from:)),
+            lastRefresh: lastRefresh,
+            remoteRefreshInterval: "\(config.remoteRefreshSeconds)s",
+            configValidation: validation
+        )
+    }
+
     /// Empty startup state used until configuration and live data are available.
     static let empty = DashboardViewModel(
         local: LocalStatus(
@@ -95,7 +113,7 @@ struct DashboardViewModel {
 
 /// Local Mac metrics displayed by the overlay.
 ///
-/// Values are strings because the current overlay displays compact formatted
+/// Values are strings because the current Window displays compact formatted
 /// text. Later services can introduce numeric raw values where thresholds or
 /// formatting require them.
 struct LocalStatus {
@@ -122,12 +140,21 @@ struct LocalStatus {
 
     /// Wi-Fi and IP information.
     let network: String
+
+    /// Allocated swap and sampled disk busy time; n/a means unsupported.
+    var swap: String = "-"
+    var diskBusy: String = "n/a"
 }
 
 /// Display state for one remote server.
 ///
 /// This model is intentionally UI-friendly and is populated by remote monitoring.
 struct ServerStatus: Identifiable {
+    /// Only enabled body metrics are rendered; heading checks stay separate.
+    var visibleMetrics: [Metric] {
+        metrics.filter { !["ssh", "ping", "http"].contains($0.label) && $0.value != "off" }
+    }
+
     /// Stable identity for SwiftUI rendering.
     let id = UUID()
 
@@ -143,12 +170,15 @@ struct ServerStatus: Identifiable {
     /// Compact metric rows shown under the server header.
     let metrics: [Metric]
 
+    /// Effective interval shown beneath each independently refreshed card.
+    var refreshInterval: String? = nil
+
     /// Creates a pending server row before the first remote refresh completes.
     static func pending(from config: ServerConfig) -> ServerStatus {
         let httpValue = config.httpURL == nil ? "n/a" : "pending"
 
         return ServerStatus(
-            name: config.name,
+            name: config.displayName,
             severity: .unknown,
             headline: "\(config.host)  pending",
             metrics: [
@@ -161,7 +191,8 @@ struct ServerStatus: Identifiable {
                 pendingMetric(label: "nginx", key: "nginx", config: config),
                 pendingMetric(label: "db", key: "mariadb", config: config),
                 pendingMetric(label: "php-fpm", key: "php_fpm", config: config),
-                pendingMetric(label: "memcached", key: "memcached", config: config)
+                pendingMetric(label: "memcached", key: "memcached", config: config),
+                pendingMetric(label: "gpu", key: "gpu", config: config)
             ]
         )
     }
@@ -194,4 +225,8 @@ struct Metric: Identifiable {
 
     /// Health state for this individual metric.
     let severity: Severity
+
+    /// Raw NVIDIA readings avoid extracting percentages from formatted text.
+    var gpuUtilizationPercent: Double? = nil
+    var gpuMemoryUsagePercent: Double? = nil
 }

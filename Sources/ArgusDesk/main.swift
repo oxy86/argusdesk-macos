@@ -1,13 +1,60 @@
-import AppKit
+import SwiftUI
 
-// ArgusDesk currently uses a minimal AppKit application entry point instead of
-// the SwiftUI `App` protocol because the app needs direct control over the
-// overlay-style window and activation policy.
-let app = NSApplication.shared
-let delegate = AppDelegate()
+/// ArgusDesk app entry point.
+///
+/// Uses a standard SwiftUI @main with both a WindowGroup (for a real Dock
+/// app window) and a MenuBarExtra (for the status icon and compact summary).
+@main
+struct ArgusDeskApp: App {
+    @Environment(\.openWindow) private var openWindow
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-// `.accessory` keeps ArgusDesk out of the Dock while still allowing it to own a
-// window. This matches the desktop-companion direction for the project.
-app.delegate = delegate
-app.setActivationPolicy(.accessory)
-app.run()
+    var body: some Scene {
+        WindowGroup("ArgusDesk", id: "dashboard") {
+            DashboardRootView(appDelegate: appDelegate)
+        }
+        .windowResizability(.contentSize)
+
+        MenuBarExtra {
+            VStack {
+                Button("Show ArgusDesk") {
+                    openWindow(id: "dashboard")
+                    NSApp.unhide(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                Button("Preferences") {
+                    appDelegate.showPreferencesAction()
+                }
+                Button("Quit") {
+                    NSApp.terminate(nil)
+                }
+            }
+            .padding()
+            .frame(width: 200)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 22, height: 22)
+        }
+    }
+}
+
+/// Observes the monitoring owner inside the view hierarchy. Each published
+/// snapshot redraws the dashboard rather than retaining the launch snapshot.
+private struct DashboardRootView: View {
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject var appDelegate: AppDelegate
+    /// Shared with Preferences so changing the arrangement resizes the window.
+    @AppStorage("serverLayout") private var layout: ServerLayout = .vertical
+
+    var body: some View {
+        ContentView(
+            viewModel: appDelegate.dashboardViewModel,
+            showPreferences: { appDelegate.showPreferencesAction() }
+        )
+        .onAppear { appDelegate.openDashboard = { openWindow(id: "dashboard") } }
+        .frame(width: layout.contentSize(servers: appDelegate.dashboardViewModel.servers).width,
+               height: layout.contentSize(servers: appDelegate.dashboardViewModel.servers).height)
+    }
+}

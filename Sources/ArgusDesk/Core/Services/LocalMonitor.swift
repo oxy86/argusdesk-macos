@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import IOKit.ps
 
-/// Reads local Mac status for the overlay.
+/// Reads local Mac status for the main window.
 ///
 /// This service is self-contained and read-only. It uses native macOS and
 /// Darwin APIs so the app does not need third-party monitoring libraries or
@@ -13,17 +13,19 @@ final class LocalMonitor {
 
     /// Returns the current local Mac status as UI-ready strings.
     ///
-    /// Formatting happens here because the overlay displays compact text values.
-    func snapshot() -> LocalStatus {
-        LocalStatus(
-            hostname: hostname(),
+    /// Formatting happens here because the Window displays compact text values.
+    func snapshot(label: String? = nil) -> LocalStatus {
+        let friendly = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return LocalStatus(
+            hostname: friendly.isEmpty ? hostname() : friendly,
             osVersion: osVersion(),
             uptime: uptime(),
             battery: battery(),
             cpu: cpuUsage(),
             memory: memoryUsage(),
             disk: diskUsage(),
-            network: network()
+            network: network(),
+            swap: swapUsage()
         )
     }
 
@@ -133,6 +135,15 @@ final class LocalMonitor {
         }
 
         return "\(Int(round((Double(used) / Double(total)) * 100)))%"
+    }
+
+    /// Allocated swap from Darwin, in binary gigabytes. A machine with no
+    /// allocated swap correctly reports zero rather than an unavailable value.
+    private func swapUsage() -> String {
+        var usage = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        guard sysctlbyname("vm.swapusage", &usage, &size, nil, 0) == 0 else { return "n/a" }
+        return String(format: "%.2f GiB", Double(usage.xsu_used) / 1_073_741_824)
     }
 
     /// Root filesystem usage percentage.

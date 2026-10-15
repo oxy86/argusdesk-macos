@@ -1,131 +1,89 @@
-import Foundation
+import AppKit
 import UserNotifications
 
-/// Sends macOS notifications when remote server severity changes.
-///
-/// The first completed remote refresh establishes a baseline and does not
-/// notify. Later refreshes notify only on severity transitions, preventing
-/// repeated alerts while a server remains in the same state.
+/// Uses macOS banners, grouping, sounds, and the application's own icon.
+/// Delivery remains subject to the user's Notifications and Focus settings.
 @MainActor
-final class NotificationController {
-    /// Native macOS notification center when running inside an app bundle.
-    ///
-    /// `UNUserNotificationCenter.current()` raises an Objective-C exception for
-    /// raw SwiftPM executables, so source-run builds must not initialize it.
+final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
     private let center: UNUserNotificationCenter?
+    private var tracker = MetricAlerts()
+    private var enabled = false
+    private var recovery = true
+    var showDashboard: (() -> Void)?
 
-    /// Last observed severity keyed by server name.
-    private var previousSeverityByServer: [String: Severity] = [:]
-
-    /// Whether status-change notifications are enabled.
-    private var notificationsEnabled = false
-
-    /// Whether recovery notifications are enabled.
-    private var recoveryNotificationsEnabled = true
-
-    /// Creates a controller that degrades gracefully outside an app bundle.
-    init() {
-        center = Bundle.main.bundleURL.pathExtension == "app"
-            ? UNUserNotificationCenter.current()
-            : nil
+    override init() {
+        center = Bundle.main.bundleURL.pathExtension == "app" ? .current() : nil
+        super.init()
+        center?.delegate = self
     }
 
-    /// Applies notification preferences and requests authorization when needed.
     func configure(notificationsEnabled: Bool, recoveryNotificationsEnabled: Bool) {
-        self.notificationsEnabled = notificationsEnabled
-        self.recoveryNotificationsEnabled = recoveryNotificationsEnabled
-
-        guard notificationsEnabled, let center else {
-            return
-        }
-
-        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if let error {
-                print("ArgusDesk notification warning: \(error.localizedDescription)")
-            } else if !granted {
-                print("ArgusDesk notification warning: permission was not granted.")
-            }
+        if notificationsEnabled && !enabled { tracker = MetricAlerts() }
+        enabled = notificationsEnabled
+        recovery = recoveryNotificationsEnabled
+        guard enabled else { return }
+        center?.requestAuthorization(options: [.alert, .sound]) { _, error in
+            if let error { print("Notification authorization: \(error.localizedDescription)") }
         }
     }
 
-    /// Evaluates a completed remote refresh and sends notifications for changes.
-    func process(servers: [ServerStatus]) {
-        var currentSeverityByServer: [String: Severity] = [:]
-        for server in servers {
-            currentSeverityByServer[server.name] = server.severity
-        }
+    func process(servers: [ServerStatus], thresholds: Thresholds) {
+        // Track changes while disabled; enabling alerts establishes a fresh tracker.
+        let alerts = tracker.evaluate(servers: servers, thresholds: thresholds, recovery: recovery)
+        guard enabled else { return }
+        for alert in alerts { send(alert) }
+    }
 
-        guard !previousSeverityByServer.isEmpty else {
-            previousSeverityByServer = currentSeverityByServer
-            return
-        }
-
-        defer {
-            previousSeverityByServer = currentSeverityByServer
-        }
-
-        guard notificationsEnabled else {
-            return
-        }
-
-        for server in servers {
-            guard
-                let previousSeverity = previousSeverityByServer[server.name],
-                previousSeverity != server.severity
-            else {
-                continue
+    /// A test must work independently of the saved monitoring toggle and must
+    /// report denial/errors instead of silently submitting an undeliverable alert.
+    func sendTest() async -> String {
+        guard let center else { return "Notifications require the ArgusDesk.app bundle." }
+        do {
+            var settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                if !granted { return "Permission was not granted. Enable ArgusDesk in macOS Notification Settings." }
+                settings = await center.notificationSettings()
             }
-
-            if server.severity == .ok {
-                guard recoveryNotificationsEnabled, previousSeverity == .warning || previousSeverity == .error else {
-                    continue
-                }
-
-                send(
-                    identifier: "\(server.name)-recovered",
-                    title: "\(server.name) recovered",
-                    body: server.headline
-                )
-                continue
+            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                return "Notifications are disabled for ArgusDesk. Enable Allow Notifications in macOS Notification Settings."
             }
-
-            guard server.severity == .warning || server.severity == .error else {
-                continue
+            let content = UNMutableNotificationContent()
+            content.title = "ArgusDesk — Test notification"
+            content.body = "Native server alerts are ready. This is a test notification."
+            content.sound = .default
+            content.threadIdentifier = "ArgusDesk-test"
+            let request = UNNotificationRequest(identifier: "test-" + UUID().uuidString,
+                content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
+            try await center.add(request)
+            if settings.alertSetting == .disabled || settings.alertStyle == .none {
+                return "Test scheduled, but banners are disabled. Choose Banners or Alerts in macOS Notification Settings."
             }
-
-            send(
-                identifier: "\(server.name)-\(server.severity.rawValue)",
-                title: "\(server.name): \(server.severity.rawValue)",
-                body: problemSummary(for: server)
-            )
+            return "Test scheduled for two seconds from now. If no banner appears, check Notification Center and Focus settings."
+        } catch {
+            return "Could not send the test notification: \(error.localizedDescription)"
         }
     }
 
-    /// Sends one immediate macOS notification.
-    private func send(identifier: String, title: String, body: String) {
-        guard let center else {
-            return
-        }
-
+    private func send(_ alert: MetricAlert) {
         let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
+        content.title = alert.title
+        content.body = alert.body
+        content.threadIdentifier = alert.server
         content.sound = .default
-
-        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) { error in
-            if let error {
-                print("ArgusDesk notification warning: \(error.localizedDescription)")
-            }
+        center?.add(UNNotificationRequest(identifier: alert.identifier, content: content, trigger: nil)) { error in
+            if let error { print("Notification delivery: \(error.localizedDescription)") }
         }
     }
 
-    /// Summarizes the first few warning/error metrics for an alert body.
-    private func problemSummary(for server: ServerStatus) -> String {
-        let problems = server.metrics
-            .filter { $0.severity == .warning || $0.severity == .error }
-            .prefix(3)
-            .map { "\($0.label) \($0.value)" }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
+    }
 
-        return problems.isEmpty ? server.headline : problems.joined(separator: ", ")
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void) {
+        Task { @MainActor in self.showDashboard?() }
+        completionHandler()
     }
 }

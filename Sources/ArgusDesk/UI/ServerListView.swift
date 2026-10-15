@@ -5,6 +5,8 @@ import SwiftUI
 /// This is the primary content area for ArgusDesk and renders the latest remote
 /// monitoring results.
 struct ServerListView: View {
+    /// Uses the same saved arrangement as the window and Preferences.
+    @AppStorage("serverLayout") private var layout: ServerLayout = .vertical
     /// Server rows to display.
     let servers: [ServerStatus]
 
@@ -16,7 +18,7 @@ struct ServerListView: View {
             HStack {
                 SectionHeader(title: "SERVERS")
                 Spacer()
-                Text("refresh \(refreshInterval)")
+                Text("global \(refreshInterval)")
                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.48))
             }
@@ -27,8 +29,15 @@ struct ServerListView: View {
                     .foregroundStyle(Color.white.opacity(0.48))
                     .padding(.vertical, 4)
             } else {
-                ForEach(servers) { server in
-                    ServerStatusView(server: server)
+                // AnyLayout preserves card identity when the arrangement changes.
+                let cards = layout == .vertical
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 18))
+                cards {
+                    ForEach(servers) { server in
+                        ServerStatusView(server: server)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                 }
             }
         }
@@ -46,7 +55,10 @@ struct ServerStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                StatusDot(severity: server.severity)
+                // The dot reports SSH connectivity; resource rows retain their
+                // own health colors and overall health remains in the menu bar.
+                StatusDot(severity: server.metrics.first { $0.label == "ssh" }?.severity ?? .unknown)
+                    .help("SSH: \(server.metrics.first { $0.label == "ssh" }?.value ?? "unknown")")
 
                 Text(server.name)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -54,19 +66,40 @@ struct ServerStatusView: View {
 
                 Spacer(minLength: 8)
 
-                Text(server.headline)
-                    .lineLimit(1)
-                    .foregroundStyle(Color.white.opacity(0.58))
-
-                StatusBadge(severity: server.severity)
+                if let ping = server.metrics.first(where: { $0.label == "ping" }) {
+                    Text(ping.value)
+                        .foregroundStyle(ping.severity.color)
+                        .lineLimit(1)
+                }
+                if let http = server.metrics.first(where: { $0.label == "http" }), http.value != "off" {
+                    Text("HTTP \(http.value)")
+                        .foregroundStyle(http.severity.color)
+                        .lineLimit(1)
+                }
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                ForEach(server.metrics) { metric in
+                if let load = server.visibleMetrics.first(where: { $0.label == "load" }) {
+                    MetricRow(metric: load)
+                }
+                if let disk = server.visibleMetrics.first(where: { $0.label == "disk /" }) {
+                    ResourceRow(label: "disk", usage: disk, secondary: server.metrics.first { $0.label == "disk busy" }, suffix: "busy")
+                }
+                if let memory = server.visibleMetrics.first(where: { $0.label == "mem" }) {
+                    ResourceRow(label: "mem", usage: memory, secondary: server.metrics.first { $0.label == "swap" }, suffix: "swap")
+                }
+                ForEach(server.visibleMetrics.filter { !["load", "disk /", "mem", "disk busy", "swap"].contains($0.label) }) { metric in
                     MetricRow(metric: metric)
+                        .help("\(metric.label): \(metric.value)")
                 }
             }
             .padding(.leading, 14)
+            if let interval = server.refreshInterval {
+                Text("refresh \(interval)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.4))
+                    .padding(.leading, 14)
+            }
         }
         .padding(.vertical, 4)
     }

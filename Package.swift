@@ -2,11 +2,6 @@
 
 import PackageDescription
 
-/// Swift Package Manager manifest for ArgusDesk for macOS.
-///
-/// The native macOS implementation intentionally has no third-party
-/// dependencies. The executable target links against native Apple
-/// frameworks through the source imports.
 let package = Package(
     name: "ArgusDesk",
     platforms: [
@@ -18,7 +13,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ArgusDesk",
-            path: "Sources/ArgusDesk"
-        )
+            path: "Sources/ArgusDesk",
+            swiftSettings: [
+                .unsafeFlags(["-parse-as-library"])
+            ]
+        ),
+        .testTarget(name: "ArgusDeskTests", dependencies: ["ArgusDesk"])
     ]
 )

@@ -11,15 +11,38 @@ struct MetricRow: View {
         HStack(spacing: 8) {
             Text(metric.label)
                 .foregroundStyle(Color.white.opacity(0.48))
-                .frame(width: 52, alignment: .leading)
+                .frame(width: 72, alignment: .leading)
 
             Text(metric.value)
                 .foregroundStyle(metric.severity == .unknown ? Color.white.opacity(0.42) : metric.severity.color)
-                .lineLimit(1)
+                .lineLimit(metric.label.hasPrefix("pid ") ? 2 : 1)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
         }
         .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+    }
+}
+
+/// Resource pair with separately colored capacity and activity/swap values.
+struct ResourceRow: View {
+    let label: String
+    let usage: Metric
+    let secondary: Metric?
+    let suffix: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label).foregroundStyle(Color.white.opacity(0.48))
+                .frame(width: 72, alignment: .leading)
+            Text("\(usage.value) used").foregroundStyle(usage.severity.color)
+            Text("/").foregroundStyle(Severity.unknown.color)
+            Text("\(secondary?.value ?? "n/a") \(suffix)")
+                .foregroundStyle(secondary?.severity.color ?? Severity.unknown.color)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+        .help(label == "disk" ? "Filesystem capacity / root block-device busy time. n/a means unavailable." : "RAM usage / allocated swap")
     }
 }
 

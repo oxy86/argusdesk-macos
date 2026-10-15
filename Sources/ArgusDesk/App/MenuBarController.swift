@@ -8,9 +8,6 @@ import SwiftUI
 @MainActor
 final class MenuBarController: NSObject {
     /// System-owned status item displayed in the menu bar.
-    ///
-    /// Uses the global status item for reliability with the accessory
-    /// activation policy.
     private let statusItem: NSStatusItem
 
     /// Latest dashboard snapshot used to rebuild the menu.
@@ -31,6 +28,9 @@ final class MenuBarController: NSObject {
     /// Called when the user chooses Quit.
     private let quit: () -> Void
 
+    /// The menu bar icon loaded from bundle resources, marked as template.
+    private var menuBarIcon: NSImage?
+
     /// Creates and immediately displays the menu bar item.
     init(
         dashboard: DashboardViewModel,
@@ -45,19 +45,22 @@ final class MenuBarController: NSObject {
         self.showPreferences = showPreferences
         self.quit = quit
 
-        // Use the global status item for reliability.
+        // Create a global status item for the menu bar.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.title = "●"
+        statusItem.toolTip = "ArgusDesk"
 
         super.init()
 
-        // Update the button and menu immediately.
-        updateButton()
-        statusItem.menu = buildMenu()
+        // Load the template menu bar icon from bundle resources.
+        // Tries multiple lookup strategies since SwiftPM executables
+        // don't always resolve Bundle.main correctly.
+        loadMenuBarIcon()
 
-        // Retry button update after a short delay in case the button
-        // wasn't available immediately.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        // Schedule menu setup after the run loop stabilizes.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.updateButton()
+            self?.statusItem.menu = self?.buildMenu()
         }
     }
 
@@ -69,17 +72,25 @@ final class MenuBarController: NSObject {
         statusItem.menu = buildMenu()
     }
 
-    /// Applies the compact colored status dot in the menu bar.
+    /// Applies the menu bar icon to the status item button.
+    ///
+    /// The icon is loaded as a template image (`isTemplate = true`), so macOS
+    /// automatically tints it for light/dark mode and hover state.
     private func updateButton() {
         guard let button = statusItem.button else {
             return
         }
 
+        // If we have a custom icon from Resources, use it.
+        if let icon = menuBarIcon {
+            button.image = icon
+            button.toolTip = "ArgusDesk: \(dashboard.overallSeverity.rawValue)"
+            return
+        }
+
+        // Fallback: colored severity dot.
         let severity = dashboard.overallSeverity
         let color = NSColor(severity.color)
-
-        // Create a colored circle image using NSImage.
-        // This ensures the icon is visible regardless of the button's title behavior.
         let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { bounds in
             let ctx = NSGraphicsContext.current!
             ctx.saveGraphicsState()
@@ -91,11 +102,55 @@ final class MenuBarController: NSObject {
             return true
         }
         image.isTemplate = false
-
         button.image = image
         button.toolTip = "ArgusDesk: \(severity.rawValue)"
-        button.target = nil
-        button.action = nil
+    }
+
+    /// Loads the menu bar icon from bundle resources if available.
+    ///
+    /// Tries `menubar-icon@2x.png` (44×44) first, then `menubar-icon.png`
+    /// (22×22). Sets `isTemplate = true` so macOS handles light/dark/hover
+    /// tinting automatically. If the icon is not found, the menu bar stays
+    /// with the default title fallback.
+    private func loadMenuBarIcon() {
+        // Strategy 1: standard Bundle.main lookup (works for proper .app bundles).
+        var url: URL?
+        url = Bundle.main.url(
+            forResource: "menubar-icon@2x",
+            withExtension: "png"
+        ) ?? Bundle.main.url(
+            forResource: "menubar-icon",
+            withExtension: "png"
+        )
+
+        // Strategy 2: look next to the executable (works for SwiftPM builds).
+        if url == nil {
+            let execDir = Bundle.main.bundleURL.deletingLastPathComponent()
+            url = execDir.appendingPathComponent("menubar-icon.png")
+            if !FileManager.default.fileExists(atPath: url!.path) {
+                url = execDir.appendingPathComponent("menubar-icon@2x.png")
+            }
+        }
+
+        // Strategy 3: look in Resources relative to bundle path.
+        if url == nil {
+            let resourcesURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources")
+            url = resourcesURL.appendingPathComponent("menubar-icon.png")
+            if !FileManager.default.fileExists(atPath: url!.path) {
+                url = resourcesURL.appendingPathComponent("menubar-icon@2x.png")
+            }
+        }
+
+        guard let url else {
+            return
+        }
+
+        guard let image = NSImage(contentsOf: url) else {
+            return
+        }
+
+        image.isTemplate = true
+        menuBarIcon = image
     }
 
     /// Builds the compact summary menu.

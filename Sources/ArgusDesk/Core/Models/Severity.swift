@@ -16,7 +16,7 @@ enum Severity: String {
     /// The app does not yet have enough reliable data to decide.
     case unknown = "UNKNOWN"
 
-    /// Compact label for the narrow overlay UI.
+    /// Compact label for the narrow window UI.
     var shortLabel: String {
         switch self {
         case .ok:
@@ -30,7 +30,7 @@ enum Severity: String {
         }
     }
 
-    /// Display color used by the compact overlay UI.
+    /// Display color used by the compact window UI.
     ///
     /// These colors are intentionally muted so the widget stays readable without
     /// becoming a noisy dashboard.

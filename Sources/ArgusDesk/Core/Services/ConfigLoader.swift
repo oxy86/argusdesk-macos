@@ -7,13 +7,13 @@ import SwiftUI
 /// configuration. The loader intentionally does not watch for file changes;
 /// live reload is tracked in the roadmap.
 struct ConfigLoader {
-    /// Local configuration file name.
+    /// Local configuration file name used when no explicit path is set.
     private let configFileName = "servers.json"
 
     /// File manager used for existence checks and file reads.
     private let fileManager: FileManager
 
-    /// Directory URLs where config files may live.
+    /// Directory URLs where config files may live when no explicit path is set.
     private let searchDirectories: [URL]
 
     /// All validation errors and warnings for the loaded configuration.
@@ -24,20 +24,45 @@ struct ConfigLoader {
     /// SwiftPM runs the executable from the package directory, which makes this
     /// enough for development. The executable directory is also included so a
     /// future app bundle or copied binary has a second practical lookup path.
+    ///
+    /// - Parameters:
+    ///   - fileManager: The file manager to use for filesystem operations.
+    ///   - currentDirectory: The working directory to search.
+    ///   - executableURL: The directory next to the executable to search.
     init(
         fileManager: FileManager = .default,
         currentDirectory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
-        executableURL: URL = Bundle.main.bundleURL
+        executableURL: URL = Bundle.main.bundleURL.deletingLastPathComponent()
     ) {
         self.fileManager = fileManager
         searchDirectories = [
             currentDirectory,
-            executableURL.deletingLastPathComponent()
+            executableURL
         ]
     }
 
     /// Loads and decodes local configuration.
-    mutating func load() throws -> LoadedConfig {
+    ///
+    /// - Parameters:
+    ///   - explicitPath: An absolute path to a JSON config file, or nil to
+    ///     search the default directories.
+    /// - Returns: A decoded configuration along with metadata.
+    /// - Throws: ConfigLoaderError.noConfigFileFound if no file is available.
+    mutating func load(from explicitPath: String?) throws -> LoadedConfig {
+        // If the user provided an explicit path, try that first.
+        if let path = explicitPath {
+            let url = URL(fileURLWithPath: path)
+            guard fileManager.fileExists(atPath: url.path) else {
+                throw ConfigLoaderError.configFileNotFound(url.path)
+            }
+
+            let data = try Data(contentsOf: url)
+            let config = try JSONDecoder().decode(AppConfig.self, from: data)
+            validate(config)
+            return LoadedConfig(config: config, sourceURL: url, validation: validation)
+        }
+
+        // Otherwise search the default directories.
         for directory in searchDirectories {
             let url = directory.appendingPathComponent(configFileName)
 
@@ -73,7 +98,7 @@ struct ConfigLoader {
 
     /// Validates a single server configuration entry.
     private mutating func validate(_ server: ServerConfig, index: Int) {
-        let name = server.name.trimmingCharacters(in: .whitespaces)
+        let name = server.displayName.trimmingCharacters(in: .whitespaces)
         let host = server.host.trimmingCharacters(in: .whitespaces)
 
         // Ensure server name is present and not just whitespace.
@@ -148,11 +173,16 @@ enum ConfigLoaderError: LocalizedError {
     /// No supported configuration file existed in any search directory.
     case noConfigFileFound(String)
 
+    /// The user-specified configuration file does not exist.
+    case configFileNotFound(String)
+
     /// Human-readable message shown in development logs and future UI.
     var errorDescription: String? {
         switch self {
         case .noConfigFileFound(let fileName):
             "No configuration file found. Expected \(fileName)."
+        case .configFileNotFound(let path):
+            "Configuration file not found: \(path)."
         }
     }
 }

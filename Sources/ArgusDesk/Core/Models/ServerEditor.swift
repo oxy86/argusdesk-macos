@@ -9,7 +9,7 @@ struct ServerEditor: Identifiable {
     /// Stable identity for SwiftUI rendering.
     let id = UUID()
 
-    /// Short human-readable name displayed in the overlay.
+    /// Short human-readable name displayed in the window.
     var name: String
 
     /// Hostname or IP address for SSH, ping, and HTTP checks.
@@ -30,15 +30,19 @@ struct ServerEditor: Identifiable {
     /// Enabled check identifiers from the config.
     var enabledChecks: [String]
 
+    /// Optional per-server refresh override.
+    var refreshSeconds: Int?
+
     /// Creates an editor from an existing `ServerConfig`.
     init(from config: ServerConfig) {
-        self.name = config.name
+        self.name = config.label ?? ""
         self.host = config.host
         self.sshUser = config.sshUser
         self.sshPort = config.sshPort
         self.httpURL = config.httpURL?.absoluteString
         self.httpUserAgent = config.httpUserAgent
         self.enabledChecks = config.enabledChecks
+        self.refreshSeconds = config.refreshSeconds
     }
 
     /// Creates a blank new server editor with defaults.
@@ -50,6 +54,7 @@ struct ServerEditor: Identifiable {
         self.httpURL = nil
         self.httpUserAgent = nil
         self.enabledChecks = []
+        self.refreshSeconds = nil
     }
 }
 
@@ -63,7 +68,7 @@ extension ServerEditor {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedHost = host.trimmingCharacters(in: .whitespaces)
 
-        guard !trimmedName.isEmpty, !trimmedHost.isEmpty else {
+        guard !trimmedHost.isEmpty else {
             return nil
         }
 
@@ -79,7 +84,9 @@ extension ServerEditor {
             sshPort: sshPort,
             httpURL: parsedHTTPURL,
             httpUserAgent: httpUserAgent,
-            enabledChecks: enabledChecks
+            enabledChecks: enabledChecks,
+            refreshSeconds: refreshSeconds,
+            label: trimmedName.isEmpty ? nil : trimmedName
         )
     }
 }
@@ -93,12 +100,8 @@ struct ServerValidation: Identifiable {
     ///
     /// A blank name or host is always an error. Other issues are warnings.
     static func validate(editor: ServerEditor) -> ServerValidation? {
-        let trimmedName = editor.name.trimmingCharacters(in: .whitespaces)
         let trimmedHost = editor.host.trimmingCharacters(in: .whitespaces)
 
-        if trimmedName.isEmpty {
-            return ServerValidation(message: "Server name is required.")
-        }
         if trimmedHost.isEmpty {
             return ServerValidation(message: "Server host is required.")
         }

@@ -25,14 +25,22 @@ struct SeverityEngine {
     /// value is critical.
     let serviceCPUErrorPercent: Double
 
+    private let phpFPMCPUWarningPercent: Double
+    private let phpFPMCPUErrorPercent: Double
+
+    private let gpuThresholds: Thresholds
+
     /// Creates an engine with the user-specified thresholds.
     init(thresholds: Thresholds) {
+        gpuThresholds = thresholds
         self.pingWarningMilliseconds = thresholds.pingWarningMilliseconds
         self.pingErrorMilliseconds = thresholds.pingErrorMilliseconds
         self.usageWarningPercent = thresholds.usageWarningPercent
         self.usageErrorPercent = thresholds.usageErrorPercent
         self.serviceCPUWarningPercent = thresholds.serviceCPUWarningPercent
         self.serviceCPUErrorPercent = thresholds.serviceCPUErrorPercent
+        self.phpFPMCPUWarningPercent = thresholds.phpFPMCPUWarningPercent
+        self.phpFPMCPUErrorPercent = thresholds.phpFPMCPUErrorPercent
     }
 
     /// Returns metrics with recalculated severities.
@@ -41,7 +49,9 @@ struct SeverityEngine {
             Metric(
                 label: metric.label,
                 value: metric.value,
-                severity: severity(for: metric)
+                severity: severity(for: metric),
+                gpuUtilizationPercent: metric.gpuUtilizationPercent,
+                gpuMemoryUsagePercent: metric.gpuMemoryUsagePercent
             )
         }
     }
@@ -75,12 +85,22 @@ struct SeverityEngine {
         case "disk /", "mem":
             percentSeverity(metric.value)
         case "nginx", "db", "php-fpm", "memcached":
-            serviceSeverity(metric.value)
+            serviceSeverity(metric.value, isPHP: metric.label == "php-fpm")
         case "load":
             metric.value == "n/a" || metric.value == "-" ? .unknown : .ok
         default:
-            metric.severity
+            metric.gpuUtilizationPercent != nil || metric.gpuMemoryUsagePercent != nil ? gpuSeverity(metric) : metric.severity
         }
+    }
+
+    /// Either utilization or VRAM can escalate GPU health. Unsupported values
+    /// remain absent and never turn into a false zero or an invented warning.
+    private func gpuSeverity(_ metric: Metric) -> Severity {
+        if let value = metric.gpuUtilizationPercent, value >= gpuThresholds.gpuErrorPercent { return .error }
+        if let value = metric.gpuMemoryUsagePercent, value >= gpuThresholds.gpuMemoryErrorPercent { return .error }
+        if let value = metric.gpuUtilizationPercent, value >= gpuThresholds.gpuWarningPercent { return .warning }
+        if let value = metric.gpuMemoryUsagePercent, value >= gpuThresholds.gpuMemoryWarningPercent { return .warning }
+        return .ok
     }
 
     /// Severity for ping latency strings such as `18.2ms`.
@@ -147,7 +167,7 @@ struct SeverityEngine {
     }
 
     /// Severity for service strings such as `active 0.12GB 1.4%`.
-    private func serviceSeverity(_ value: String) -> Severity {
+    private func serviceSeverity(_ value: String, isPHP: Bool) -> Severity {
         if value == "off" || value == "n/a" {
             return .unknown
         }
@@ -165,11 +185,11 @@ struct SeverityEngine {
             return .ok
         }
 
-        if cpuPercent >= serviceCPUErrorPercent {
+        if cpuPercent >= (isPHP ? phpFPMCPUErrorPercent : serviceCPUErrorPercent) {
             return .error
         }
 
-        if cpuPercent >= serviceCPUWarningPercent {
+        if cpuPercent >= (isPHP ? phpFPMCPUWarningPercent : serviceCPUWarningPercent) {
             return .warning
         }
 

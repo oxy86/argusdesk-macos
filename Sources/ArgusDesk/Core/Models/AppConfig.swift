@@ -6,7 +6,7 @@ import Foundation
 /// identifiers produce a validation warning instead of silently running.
 let knownCheckKeys: Set<String> = [
     "ssh", "ping", "http", "load", "disk", "memory",
-    "nginx", "mariadb", "php_fpm", "memcached"
+    "nginx", "mariadb", "php_fpm", "memcached", "gpu"
 ]
 
 /// Top-level configuration loaded from `servers.json` or `servers.example.json`.
@@ -28,8 +28,12 @@ struct AppConfig: Decodable, Encodable {
     /// Servers that should appear in the remote monitoring section.
     let servers: [ServerConfig]
 
+    /// Optional friendly name for the local Mac; blank uses its hostname.
+    let localLabel: String?
+
     /// Decoding keys match the snake_case JSON format documented in README.
     private enum CodingKeys: String, CodingKey {
+        case localLabel = "local_label"
         case remoteRefreshSeconds = "remote_refresh_seconds"
         case localRefreshSeconds = "local_refresh_seconds"
         case servers
@@ -37,6 +41,7 @@ struct AppConfig: Decodable, Encodable {
 
     /// Encoding keys also use snake_case for JSON output.
     private enum EncodedCodingKeys: String, CodingKey {
+        case localLabel = "local_label"
         case remoteRefreshSeconds = "remote_refresh_seconds"
         case localRefreshSeconds = "local_refresh_seconds"
         case servers
@@ -57,6 +62,23 @@ struct AppConfig: Decodable, Encodable {
         ) ?? Self.defaultLocalRefreshSeconds
 
         servers = try container.decodeIfPresent([ServerConfig].self, forKey: .servers) ?? []
+        localLabel = try container.decodeIfPresent(String.self, forKey: .localLabel)
+    }
+
+    /// Creates an AppConfig with the given values.
+    ///
+    /// Convenience initialiser for constructing fallback configurations
+    /// at runtime without JSON encoding/decoding.
+    init(
+        remoteRefreshSeconds: Int = Self.defaultRemoteRefreshSeconds,
+        localRefreshSeconds: Int = Self.defaultLocalRefreshSeconds,
+        servers: [ServerConfig] = [],
+        localLabel: String? = nil
+    ) {
+        self.remoteRefreshSeconds = remoteRefreshSeconds
+        self.localRefreshSeconds = localRefreshSeconds
+        self.servers = servers
+        self.localLabel = localLabel
     }
 }
 
@@ -74,8 +96,15 @@ struct ServerConfig: Decodable, Encodable {
     /// Default SSH port when a server entry omits `ssh_port`.
     static let defaultSSHPort = 22
 
-    /// Short human-readable name displayed in the overlay.
+    /// Short human-readable name displayed in the window.
     let name: String
+
+    /// Optional friendly display name; blank/missing labels use the host.
+    let label: String?
+    var displayName: String {
+        let value = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? host : value
+    }
 
     /// Hostname or IP address used for SSH, ping, and optional HTTP checks.
     let host: String
@@ -95,8 +124,18 @@ struct ServerConfig: Decodable, Encodable {
     /// Enabled check identifiers from the config.
     let enabledChecks: [String]
 
+    /// Nil means use the global remote refresh interval from Preferences.
+    let refreshSeconds: Int?
+
+    /// Stable identity for scheduling independently of display-name changes.
+    var connectionID: String { "\(sshUser)@\(host):\(sshPort)" }
+
+    func effectiveRefreshSeconds(global: Int) -> Int { refreshSeconds ?? max(1, global) }
+
     /// Decoding keys match the snake_case JSON format documented in README.
     private enum CodingKeys: String, CodingKey {
+        case label
+        case refreshSeconds = "refresh_seconds"
         case name
         case host
         case sshUser = "ssh_user"
@@ -117,27 +156,45 @@ struct ServerConfig: Decodable, Encodable {
         sshPort: Int,
         httpURL: URL?,
         httpUserAgent: String?,
-        enabledChecks: [String]
+        enabledChecks: [String],
+        refreshSeconds: Int? = nil,
+        label: String? = nil
     ) {
         self.name = name
+        self.label = label
         self.host = host
         self.sshUser = sshUser
         self.sshPort = sshPort
         self.httpURL = httpURL
         self.httpUserAgent = httpUserAgent
         self.enabledChecks = enabledChecks
+        self.refreshSeconds = refreshSeconds
     }
 
     /// Applies defaults for optional SSH settings and keeps HTTP optional.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        name = try container.decode(String.self, forKey: .name)
         host = try container.decode(String.self, forKey: .host)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? host
+        label = try container.decodeIfPresent(String.self, forKey: .label)
         sshUser = try container.decodeIfPresent(String.self, forKey: .sshUser) ?? Self.defaultSSHUser
         sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? Self.defaultSSHPort
         httpUserAgent = try container.decodeIfPresent(String.self, forKey: .httpUserAgent)
         enabledChecks = try container.decodeIfPresent([String].self, forKey: .enabledChecks) ?? []
+
+        if try !container.contains(.refreshSeconds) || container.decodeNil(forKey: .refreshSeconds) {
+            refreshSeconds = nil
+        } else if let seconds = try? container.decode(Int.self, forKey: .refreshSeconds), seconds > 0 {
+            refreshSeconds = seconds
+        } else if let text = try? container.decode(String.self, forKey: .refreshSeconds) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { refreshSeconds = nil }
+            else if let seconds = Int(trimmed), seconds > 0 { refreshSeconds = seconds }
+            else { throw DecodingError.dataCorruptedError(forKey: .refreshSeconds, in: container, debugDescription: "Refresh must be blank or a positive whole number of seconds.") }
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .refreshSeconds, in: container, debugDescription: "Refresh must be blank or a positive whole number of seconds.")
+        }
 
         if let rawURL = try container.decodeIfPresent(String.self, forKey: .httpURL) {
             httpURL = URL(string: rawURL)
