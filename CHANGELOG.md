@@ -2,6 +2,40 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 0.8 (Unreleased)
+
+- Replaced the desktop overlay with a standard macOS window, Dock icon, and
+  App Switcher support; monitoring continues when windows are hidden or closed.
+- Added saved vertical and horizontal server layouts, an opaque black background,
+  wider metric labels, and window sizes that account for enabled metrics.
+- Moved ping and HTTP into server headings and used a dot for SSH connectivity.
+  Disabled ping is neutral `off`; irrelevant service rows are hidden.
+- Added independent per-server refresh intervals with a global fallback, blank
+  fields in Settings, and optional local/server labels with hostname/IP fallback.
+- Added configurable GPU utilization and VRAM thresholds for colors and alerts.
+- Improved service CPU sampling with cgroup counters and actual elapsed time;
+  retained normalized CPU percentages and set PHP-FPM defaults to 50%/90%.
+- Added configuration file selection and reload, with a persisted path for
+  reliable startup outside the project directory.
+- Added configurable per-server checks and optional NVIDIA utilization, VRAM,
+  process names/PIDs, allocated memory, and supported process SM utilization.
+- Added separate disk capacity/busy and memory/swap rows. Linux disk activity
+  samples the root block device; unavailable readings remain `n/a`.
+- Added dedicated PHP-FPM CPU warning and critical thresholds, with persisted
+  values, threshold validation, and matching notification details.
+- Added native launch-at-login and hidden-start preferences.
+- Added native per-metric warning, critical, and optional recovery notifications,
+  threshold details, repeat suppression, foreground banners, and a test action.
+- Fixed dashboard observation so completed monitoring results update the window.
+- Added application packaging scripts, metadata, and icons.
+- Added a universal Apple silicon/Intel DMG workflow with tag/main/version
+  validation, Developer ID signing, notarization, checksums, and release upload.
+  Manual workflow runs produce development artifacts without publishing.
+- Made test notifications request permission directly and display delivery
+  feedback, with a shortcut to macOS Notification Settings.
+- Added regression coverage for monitoring presentation, NVIDIA parsing,
+  disabled checks, layout sizing, and metric notification transitions.
+
 ## 0.7
 
 - Added the MIT license.
