@@ -2,7 +2,7 @@ import SwiftUI
 
 /// ArgusDesk app entry point.
 ///
-/// Uses a standard SwiftUI @main with both a WindowGroup (for a real Dock
+/// Uses a standard SwiftUI @main with both a single Window (for a real Dock
 /// app window) and a MenuBarExtra (for the status icon and compact summary).
 @main
 struct ArgusDeskApp: App {
@@ -10,7 +10,9 @@ struct ArgusDeskApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        WindowGroup("ArgusDesk", id: "dashboard") {
+        // A Window scene reuses its dashboard when openWindow is called.
+        // WindowGroup would create another dashboard on each Dock reopen.
+        Window("ArgusDesk", id: "dashboard") {
             DashboardRootView(appDelegate: appDelegate)
         }
         .windowResizability(.contentSize)

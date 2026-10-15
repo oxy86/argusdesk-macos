@@ -168,7 +168,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showDashboard()
-        return true
+        // showDashboard handles reopening. Returning false prevents AppKit
+        // from also performing its default window-reopen action.
+        return false
     }
 
     func showDashboard() {
