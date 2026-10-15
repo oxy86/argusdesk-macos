@@ -4,6 +4,7 @@ import AppKit
 ///
 /// Tries `menubar-icon@2x.png` (44×44) first, then `menubar-icon.png` (22×22).
 /// Falls back to an SF Symbol circle if neither is found.
+@MainActor
 enum MenuBarIcon {
     /// The cached NSImage used by the SwiftUI MenuBarExtra label.
     static let image: NSImage = {

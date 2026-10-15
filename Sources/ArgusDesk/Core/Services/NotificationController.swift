@@ -39,13 +39,13 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
     func sendTest() async -> String {
         guard let center else { return "Notifications require the ArgusDesk.app bundle." }
         do {
-            var settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
+            var settings = await permissionSnapshot(center)
+            if settings.needsAuthorization {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound])
                 if !granted { return "Permission was not granted. Enable ArgusDesk in macOS Notification Settings." }
-                settings = await center.notificationSettings()
+                settings = await permissionSnapshot(center)
             }
-            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            guard settings.authorized else {
                 return "Notifications are disabled for ArgusDesk. Enable Allow Notifications in macOS Notification Settings."
             }
             let content = UNMutableNotificationContent()
@@ -56,12 +56,27 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
             let request = UNNotificationRequest(identifier: "test-" + UUID().uuidString,
                 content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
             try await center.add(request)
-            if settings.alertSetting == .disabled || settings.alertStyle == .none {
+            if !settings.bannersEnabled {
                 return "Test scheduled, but banners are disabled. Choose Banners or Alerts in macOS Notification Settings."
             }
             return "Test scheduled for two seconds from now. If no banner appears, check Notification Center and Focus settings."
         } catch {
             return "Could not send the test notification: \(error.localizedDescription)"
+        }
+    }
+
+    /// Older macOS SDKs do not mark UNNotificationSettings as Sendable.
+    /// Read it inside the system callback and transfer only immutable booleans
+    /// back to the main actor, rather than passing the SDK object across actors.
+    private func permissionSnapshot(_ center: UNUserNotificationCenter) async -> NotificationPermissionSnapshot {
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: NotificationPermissionSnapshot(
+                    needsAuthorization: settings.authorizationStatus == .notDetermined,
+                    authorized: settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional,
+                    bannersEnabled: settings.alertSetting != .disabled && settings.alertStyle != .none
+                ))
+            }
         }
     }
 
@@ -86,4 +101,11 @@ final class NotificationController: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor in self.showDashboard?() }
         completionHandler()
     }
+}
+
+/// Values safe to pass between the notification callback and the UI actor.
+private struct NotificationPermissionSnapshot: Sendable {
+    let needsAuthorization: Bool
+    let authorized: Bool
+    let bannersEnabled: Bool
 }
