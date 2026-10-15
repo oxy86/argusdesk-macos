@@ -42,8 +42,21 @@ See the [changelog](CHANGELOG.md) for release history and unreleased changes.
 ## Installation
 
 For packaged releases, download the DMG from [GitHub Releases](https://github.com/oxy86/argusdesk-macos/releases),
-open it, and drag ArgusDesk to Applications. Launch the installed app, then
-choose your local JSON configuration file in Preferences.
+open it, and drag ArgusDesk to Applications.
+
+On first launch, configure your servers:
+
+1. Download [servers.example.json](https://raw.githubusercontent.com/oxy86/argusdesk-macos/main/servers.example.json)
+   and save it as `servers.json` in a permanent location of your choice.
+2. Edit the file with your own server addresses, SSH users, ports, and enabled
+   checks. Verify key-based SSH access from Terminal first.
+3. Open ArgusDesk Settings (Preferences), choose the file under
+   **Configuration → Config file**, and click **Apply**.
+
+The DMG contains the app only; it does not include a personal configuration or
+create one automatically. Until a configuration is selected, the remote server
+list is empty. ArgusDesk remembers the selected file's path and reads it again
+on subsequent launches; it does not copy the file elsewhere.
 
 To build an app bundle from source:
 
