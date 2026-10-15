@@ -1,14 +1,16 @@
 {
   "remote_refresh_seconds": 60,
   "local_refresh_seconds": 5,
+  "local_label": "My Mac",
   "servers": [
     {
-      "name": "example",
+      "label": "Example server",
       "host": "example.com",
       "ssh_user": "username",
       "ssh_port": 22,
+      "refresh_seconds": null,
       "http_url": "https://example.com",
-      "http_user_agent": "ArgusDesk/0.7",
+      "http_user_agent": "ArgusDesk/0.8",
       "enabled_checks": [
         "ssh",
         "ping",

@@ -1,45 +1,43 @@
 # ArgusDesk for macOS Roadmap
 
-This roadmap tracks planned work beyond the current `0.7` release. Completed
-work is documented in [CHANGELOG.md](CHANGELOG.md).
+This roadmap tracks work beyond the upcoming 0.8 release. Implemented changes
+and release history are documented in [CHANGELOG.md](CHANGELOG.md); technical
+details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
 ## Distribution
 
-- Create a standard macOS application bundle.
-- Add application metadata and icons.
-- Document signing, notarization, installation, and upgrade workflows.
-- Prepare stable release builds outside the Swift Package Manager development
-  workflow.
-- Add a GitHub Actions release workflow that produces a downloadable executable
-  or application bundle, preferably packaged as a DMG when signing,
-  notarization, and CI tooling permit.
+- Validate the DMG workflow on GitHub, then verify Developer ID signing and
+  notarization during the first tagged release.
+- Check installation, upgrades, login startup, and notification authorization
+  using a downloaded release on a clean Mac.
 
 ## Configuration
 
-- Allow service unit mappings to be configured per server.
-- Add validation with clear configuration error messages.
-- Support reloading configuration without restarting the app.
-- Consider editing non-sensitive server settings from Preferences while keeping
-  credentials and private host details local.
+- Allow systemd service unit mappings to be configured per server.
+- Add an editor for server connections, labels, and enabled checks in Preferences.
+- Improve configuration error presentation and preserve the active dashboard
+  when a replacement configuration cannot be loaded.
+- Consider automatic configuration reload when the selected file changes.
 
 ## Monitoring
 
-- Make severity thresholds configurable.
-- Improve load-average evaluation using remote CPU-count information.
-- Expand partial-result reporting and command diagnostics.
-- Improve error reporting and diagnostic logging.
-- Review remote command portability across supported Linux distributions.
+- Evaluate load average using remote CPU-count information.
+- Improve partial-result reporting and include actionable command diagnostics.
+- Review remote command portability and cgroup accounting across supported
+  Linux distributions.
+- Investigate a comparable native disk-activity reading for macOS.
+- Consider configurable sustained-duration alerts and hysteresis to reduce
+  notifications caused by brief resource spikes.
 - Consider additional opt-in checks without introducing a server-side agent.
 
 ## Interface
 
-- Add optional click-through behavior for the desktop overlay.
-- Validate the interface with multiple servers, long values, and different
-  display sizes.
-- Persist overlay position and size.
-- Improve accessibility and VoiceOver labels.
-- Add controls for overlay visibility, placement, and appearance.
+- Make background and font colors configurable.
+- Persist window position and allow more flexible sizing.
+- Handle larger server lists and GPU process inventories on smaller displays.
+- Improve accessibility, VoiceOver labels, and keyboard navigation.
 - Refine menu bar summaries for larger server lists.
+- Consider an optional desktop-overlay mode and click-through behavior.
 
 ## Future Platforms
 
