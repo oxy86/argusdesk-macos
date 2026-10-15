@@ -195,7 +195,8 @@ Quit stops it. Monitoring pauses while the Mac sleeps.
 Run `swift test` for regression coverage. The
 [release workflow](.github/workflows/build-release.yml) tests and builds a
 universal app and DMG. Manual runs produce development artifacts without
-publishing. Version-tag releases require matching app metadata, finalized
+publishing; optional signed previews also validate signing and notarization.
+Version-tag releases require matching app metadata, finalized
 release notes, Developer ID signing, and successful notarization before upload.
 See the [Developer Guide](README_DEVELOPER.md) for local packaging commands and
 required GitHub Actions secrets.

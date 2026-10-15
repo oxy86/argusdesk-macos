@@ -1,11 +1,17 @@
 name: Build ArgusDesk disk image
 
-# Manual runs produce development artifacts only. Publishing requires pushing
+# Manual runs produce development or signed preview artifacts only. Publishing requires pushing
 # a version tag whose commit is already on main.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      notarize:
+        description: Sign and notarize a preview without publishing a release
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -54,7 +60,7 @@ jobs:
           PY
 
       - name: Check release credentials
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.notarize
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -80,7 +86,7 @@ jobs:
           codesign --verify --deep --strict build/ArgusDesk.app
 
       - name: Sign app with Developer ID
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.notarize
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -110,16 +116,19 @@ jobs:
         id: dmg
         env:
           APP_VERSION: ${{ steps.version.outputs.version }}
+          SIGNED_PREVIEW: ${{ inputs.notarize && 'true' || 'false' }}
         run: |
           set -euo pipefail
           suffix=""
-          if [[ "$GITHUB_EVENT_NAME" != push ]]; then suffix="-development"; fi
+          if [[ "$GITHUB_EVENT_NAME" != push ]]; then
+            if [[ "$SIGNED_PREVIEW" == true ]]; then suffix="-preview"; else suffix="-development"; fi
+          fi
           name="ArgusDesk-${APP_VERSION}-universal${suffix}.dmg"
           bash Scripts/package-dmg.sh build/ArgusDesk.app "build/$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Sign, notarize, and staple disk image
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.notarize
         env:
           DMG_NAME: ${{ steps.dmg.outputs.name }}
           AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}

@@ -219,6 +219,8 @@ RAM thresholds continue to control resource alerts.
 `.github/workflows/build-release.yml` runs on `v*` tag pushes or manual dispatch.
 Manual runs test and build a universal Apple silicon/Intel release app and upload
 an ad-hoc-signed development DMG as a workflow artifact, without publishing.
+Enable the manual `notarize` input to validate signing credentials and produce
+a signed, notarized `-preview.dmg` artifact, still without creating a release.
 Tags must match the app and plist versions, have a finalized changelog heading,
 and point to a commit reachable from `main`.
 
