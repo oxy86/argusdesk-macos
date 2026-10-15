@@ -2,6 +2,12 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 0.8.2
+
+- Fixed duplicate dashboard windows when clicking the Dock icon after closing
+  the dashboard. Reopening now restores a single dashboard window while
+  monitoring continues in the background.
+
 ## 0.8.1
 
 - Fixed a startup crash when notifications were already enabled. Notification
