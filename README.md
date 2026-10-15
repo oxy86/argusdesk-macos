@@ -8,6 +8,10 @@ Keep the dashboard open, hide it, or close its window: monitoring continues in
 the background until you choose Quit. Native macOS notifications can alert you
 when individual metrics cross their configured limits.
 
+<p align="center">
+  <img src="Assets/screenshots/dashboard.webp" width="420" alt="ArgusDesk dashboard with local Mac status, four servers, and NVIDIA GPU monitoring">
+</p>
+
 ## Features
 
 - Local hostname or friendly label, macOS version, uptime, battery, CPU,
