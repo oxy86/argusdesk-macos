@@ -174,11 +174,20 @@ jobs:
           APP_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          # Publish the finalized changelog section as the user-facing notes.
+          python3 - <<'PYNOTES'
+          import os, pathlib, re
+          changelog = pathlib.Path("CHANGELOG.md").read_text()
+          version = os.environ["APP_VERSION"]
+          section = re.search(r"^## " + re.escape(version) + r"\n(.*?)(?=^## |\Z)", changelog, re.M | re.S)
+          assert section and section.group(1).strip(), "Release notes must not be empty"
+          (pathlib.Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(section.group(1).strip() + "\n")
+          PYNOTES
           # A failed build/notarization never creates a public release. Do not
           # overwrite existing assets: a released tag should remain immutable.
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --draft --title "ArgusDesk $APP_VERSION" --generate-notes
+              --draft --title "ArgusDesk $APP_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             "build/$DMG_NAME" "build/$DMG_NAME.sha256"

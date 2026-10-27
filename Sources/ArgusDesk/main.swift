@@ -2,8 +2,7 @@ import SwiftUI
 
 /// ArgusDesk app entry point.
 ///
-/// Uses a standard SwiftUI @main with both a single Window (for a real Dock
-/// app window) and a MenuBarExtra (for the status icon and compact summary).
+/// SwiftUI owns one dashboard window and one menu bar item.
 @main
 struct ArgusDeskApp: App {
     @Environment(\.openWindow) private var openWindow
@@ -18,27 +17,17 @@ struct ArgusDeskApp: App {
         .windowResizability(.contentSize)
 
         MenuBarExtra {
-            VStack {
-                Button("Show ArgusDesk") {
-                    openWindow(id: "dashboard")
-                    NSApp.unhide(nil)
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                Button("Preferences") {
-                    appDelegate.showPreferencesAction()
-                }
-                Button("Quit") {
-                    NSApp.terminate(nil)
-                }
+            ArgusDeskMenu(snapshot: appDelegate.menuSnapshot, appDelegate: appDelegate) {
+                openWindow(id: "dashboard")
+                NSApp.unhide(nil)
+                NSApp.activate(ignoringOtherApps: true)
             }
-            .padding()
-            .frame(width: 200)
         } label: {
+            // Use the bundled artwork at its logical menu bar size.
             Image(nsImage: MenuBarIcon.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 22, height: 22)
+                .accessibilityLabel("ArgusDesk")
         }
+        .menuBarExtraStyle(.menu)
     }
 }
 

@@ -16,7 +16,7 @@ The application is organized into three main areas:
   preferences, and notifications.
 - `UI`: SwiftUI views for the main window and dashboard.
 
-The main window is managed by SwiftUI's `WindowGroup` scene, which provides a
+The main window is managed by SwiftUI's single `Window` scene, which provides a
 standard macOS application window with title bar, traffic lights, and Dock
 presence. The menu bar status item provides a compact health summary and quick
 access to the main window.
@@ -30,7 +30,7 @@ refresh loops run independently, and overlapping remote refreshes are skipped pe
 Sources/ArgusDesk/
   App/
     AppDelegate.swift
-    MenuBarController.swift
+    ArgusDeskMenu.swift
     PreferencesWindowController.swift
   Core/
     AppVersion.swift
@@ -59,12 +59,20 @@ Sources/ArgusDesk/
 
 ## Window Management
 
-The main window uses SwiftUI's `WindowGroup` scene, which creates a standard
+The main window uses SwiftUI's single `Window` scene, which creates a standard
 macOS application window. This replaces the previous overlay panel approach
 (via `OverlayWindowController`). The window appears in the Dock, App Switcher,
 and Alt-Tab with full standard chrome (title bar, minimize, maximize, close).
 
-The `MenuBarExtra` status icon remains as a secondary entry point. Clicking
+A single SwiftUI `MenuBarExtra` provides the status summary and commands.
+Its content observes completed server results published by the dashboard.
+The menu has no refresh timer or monitor of its own; local Mac samples and
+refresh-start events do not redraw it. “Refresh Now” calls the dashboard’s
+existing refresh action. Summary rows use the current dashboard snapshot;
+each server has a submenu with enabled check values, its last completed result
+time, and its refresh interval. Unknown readings remain visible and disabled
+checks are omitted. The overall menu state remains unknown while any server
+has no status, unless another server already reports a warning or error. Clicking
 "Show ArgusDesk" in the status menu activates the app and brings the main
 window to the foreground via `NSApp.activate(ignoringOtherApps: true)`.
 

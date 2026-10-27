@@ -12,6 +12,7 @@ enum MenuBarIcon {
         if let url = Bundle.main.url(forResource: "menubar-icon@2x", withExtension: "png")
             ?? Bundle.main.url(forResource: "menubar-icon", withExtension: "png") {
             if let img = NSImage(contentsOf: url) {
+                img.size = NSSize(width: 18, height: 18)
                 img.isTemplate = true
                 return img
             }
@@ -23,6 +24,7 @@ enum MenuBarIcon {
             let url = execDir.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: url.path),
                let img = NSImage(contentsOf: url) {
+                img.size = NSSize(width: 18, height: 18)
                 img.isTemplate = true
                 return img
             }

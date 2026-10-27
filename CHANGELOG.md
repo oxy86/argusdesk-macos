@@ -2,6 +2,21 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 0.9
+
+- Consolidated the menu bar into a single icon using the bundled artwork,
+  with working dashboard, Preferences, manual refresh, and Quit commands.
+- Added a submenu for every server with current check values, health symbols,
+  per-server result timestamps, and refresh intervals.
+- Made the menu follow completed dashboard server results without redrawing
+  for local Mac samples or refresh-start activity.
+- Added unknown server counts and kept overall status unknown while any
+  server is pending, unless another server reports a warning or error.
+- Reset the displayed result time when configuration changes, instead of
+  retaining an old timestamp or displaying a configuration filename.
+- Added regression coverage for menu summaries, disabled checks, pending
+  servers, result timestamps, and updates from completed server results.
+
 ## 0.8.2
 
 - Fixed duplicate dashboard windows when clicking the Dock icon after closing

@@ -13,15 +13,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var configFilePath: String?
     private var localLabel: String?
 
-    /// Strong reference to the menu bar controller.
-    private var menuBarController: MenuBarController?
-
     /// Strong reference to the preferences window controller.
     private var preferencesWindowController: PreferencesWindowController?
 
-    /// Latest dashboard snapshot shown in the main window.
-    /// Publishing each snapshot tells SwiftUI to redraw after monitoring completes.
-    @Published var dashboardViewModel = DashboardViewModel.empty
+    /// Read-only server results shared with the menu, without local sample updates.
+    let menuSnapshot = MenuSnapshot()
+
+    /// Publishing the complete snapshot redraws the main dashboard.
+    @Published var dashboardViewModel = DashboardViewModel.empty {
+        didSet { menuSnapshot.update(from: dashboardViewModel) }
+    }
 
     /// Local Mac monitor used by the refresh timer.
     private let localMonitor = LocalMonitor()
@@ -65,13 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Prevents overlapping remote refreshes if one run is still active.
     private var refreshSchedule = ServerRefreshSchedule()
     private var configGeneration = 0
-    private var isRemoteRefreshRunning: Bool { refreshSchedule.isRefreshing }
 
-    /// Called immediately when the app starts, before any delegate methods.
-    ///
-    /// Initializes all services and creates the status bar icon here because
-    /// setting `app.delegate = delegate` after `NSApplication.shared` means
-    /// the delegate lifecycle (`applicationDidFinishLaunching`) never fires.
+    /// Loads configuration and starts monitoring before the first window appears.
+    /// SwiftUI owns the single menu bar item for the lifetime of the app.
     override init() {
         super.init()
 
@@ -127,26 +124,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             recoveryNotificationsEnabled: recoveryNotificationsEnabled
         )
 
-        // Create the status bar icon here (not in applicationDidFinishLaunching)
-        // because setting app.delegate after NSApplication.shared means the
-        // delegate lifecycle never fires.
-        let menuController = MenuBarController(
-            dashboard: dashboardViewModel,
-            refreshNow: { [weak self] in
-                self?.refreshRemoteStatus(severityEngine: SeverityEngine(thresholds: self?.thresholds ?? .default))
-            },
-            showOverlay: {
-                self.showDashboard()
-            },
-            showPreferences: { [weak self] in
-                self?.showPreferences()
-            },
-            quit: {
-                NSApp.terminate(nil)
-            }
-        )
-        menuBarController = menuController
-
         notificationController.showDashboard = { [weak self] in self?.showDashboard() }
         // App Nap must not suspend the timer simply because every window is hidden.
         // This activity does not prevent normal system sleep.
@@ -182,7 +159,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Captures fresh local status and updates the dashboard.
     private func refreshLocalStatus() {
         dashboardViewModel = dashboardViewModel.updating(local: localMonitor.snapshot(label: localLabel))
-        updateMenuBar()
     }
 
     /// Starts the local refresh timer.
@@ -225,7 +201,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 guard generation == self.configGeneration,
                       let index = self.serverConfigs.firstIndex(where: { $0.connectionID == server.connectionID }),
                       self.dashboardViewModel.servers.indices.contains(index), var status = statuses.first else {
-                    self.updateMenuBar()
                     return
                 }
                 // Re-evaluate using current settings if thresholds changed while
@@ -234,24 +209,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 status = ServerStatus(name: status.name,
                     severity: SeverityEngine(thresholds: self.thresholds).serverSeverity(for: metrics),
                     headline: status.headline, metrics: metrics,
-                    refreshInterval: "\(server.effectiveRefreshSeconds(global: self.remoteRefreshSeconds))s")
+                    refreshInterval: "\(server.effectiveRefreshSeconds(global: self.remoteRefreshSeconds))s",
+                    lastResultAt: Date())
                 var servers = self.dashboardViewModel.servers
                 servers[index] = status
                 self.dashboardViewModel = self.dashboardViewModel.updating(servers: servers,
                     lastRefresh: Self.refreshTimeFormatter.string(from: Date()))
                 self.notificationController.process(servers: servers, thresholds: self.thresholds)
-                self.updateMenuBar()
             }
         }
-        updateMenuBar()
     }
 
-    /// Pushes the latest dashboard summary into the menu bar item.
-    private func updateMenuBar() {
-        menuBarController?.update(
-            dashboard: dashboardViewModel,
-            isRefreshing: isRemoteRefreshRunning
-        )
+    /// Menu commands share the dashboard's monitoring owner and current thresholds.
+    func refreshNow() {
+        refreshRemoteStatus(severityEngine: SeverityEngine(thresholds: thresholds))
     }
 
     /// Opens the Preferences window, creating it on first use.
@@ -313,7 +284,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             recoveryNotificationsEnabled: recoveryNotificationsEnabled
         )
         dashboardViewModel = dashboardViewModel.updating(remoteRefreshSeconds: remoteRefreshSeconds)
-        updateMenuBar()
         startLocalRefreshTimer()
         refreshSchedule.resetDeadlines()
         startRemoteRefreshTimer()

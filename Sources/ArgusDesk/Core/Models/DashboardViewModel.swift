@@ -62,7 +62,7 @@ struct DashboardViewModel {
     /// Creates a copy with a new config, fresh pending servers, and new validation.
     ///
     /// Called when the user changes the configuration file path in Preferences.
-    /// Preserves the most recent local Mac status and the last-refresh timestamp.
+    /// Preserves local Mac status and resets the timestamp for the new server list.
     func replacing(
         config: AppConfig,
         servers: [ServerConfig],
@@ -71,7 +71,7 @@ struct DashboardViewModel {
         DashboardViewModel(
             local: local,
             servers: servers.map(ServerStatus.pending(from:)),
-            lastRefresh: lastRefresh,
+            lastRefresh: "not refreshed",
             remoteRefreshInterval: "\(config.remoteRefreshSeconds)s",
             configValidation: validation
         )
@@ -104,7 +104,7 @@ struct DashboardViewModel {
         return DashboardViewModel(
             local: empty.local,
             servers: config.servers.map(ServerStatus.pending(from:)),
-            lastRefresh: configSource.lastPathComponent,
+            lastRefresh: "not refreshed",
             remoteRefreshInterval: "\(config.remoteRefreshSeconds)s",
             configValidation: validation
         )
@@ -172,6 +172,9 @@ struct ServerStatus: Identifiable {
 
     /// Effective interval shown beneath each independently refreshed card.
     var refreshInterval: String? = nil
+
+    /// Time this server last returned a completed check, including failed checks.
+    var lastResultAt: Date? = nil
 
     /// Creates a pending server row before the first remote refresh completes.
     static func pending(from config: ServerConfig) -> ServerStatus {
