@@ -1,6 +1,6 @@
 # ArgusDesk for macOS Roadmap
 
-This roadmap tracks work beyond the current 0.9 release. Implemented changes
+This roadmap tracks work beyond the current 1.0 release. Implemented changes
 and release history are documented in [CHANGELOG.md](CHANGELOG.md); technical
 details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
@@ -27,12 +27,18 @@ details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 - Consider configurable sustained-duration alerts and hysteresis to reduce
   notifications caused by brief resource spikes.
 - Consider additional opt-in checks without introducing a server-side agent.
+- Support package managers other than `apt` for the updates check, and report
+  when a reboot is required.
+- Consider configurable pending-update limits.
 
 ## Interface
 
 - Make background and font colors configurable.
-- Persist window position and allow more flexible sizing.
-- Handle larger server lists and GPU process inventories on smaller displays.
+- Allow the dashboard window to be resized by dragging, not only from the
+  height setting in Preferences.
+- Color the local CPU, GPU, memory, and disk readings with the usage limits.
+- Remember which server rows are open between launches.
+- Offer a custom, thinner scroll bar styled to the app.
 - Improve accessibility, VoiceOver labels, and keyboard navigation.
 - Consider an optional desktop-overlay mode and click-through behavior.
 

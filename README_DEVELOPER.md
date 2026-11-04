@@ -37,10 +37,12 @@ Sources/ArgusDesk/
     Models/
       AppConfig.swift
       DashboardViewModel.swift
+      ServerChip.swift
       Severity.swift
     Services/
       CommandRunner.swift
       ConfigLoader.swift
+      ExternalIPService.swift
       HTTPChecker.swift
       LocalMonitor.swift
       NotificationController.swift
@@ -77,12 +79,28 @@ has no status, unless another server already reports a warning or error. Clickin
 window to the foreground via `NSApp.activate(ignoringOtherApps: true)`.
 
 The dashboard uses an opaque black background. Preferences offers a saved
-vertical or horizontal server layout. Vertical content is 380 points wide and
-at least 820 points high; horizontal content uses 360-point columns, 18-point
-gaps, 24-point outer padding, and at least 420 points of height. Heights grow
-with the enabled rows and GPU process inventory. Four columns use 1518 points.
-Very large inventories can exceed the available screen and need further layout
-work. Disk and memory use separate rows, each including a secondary reading.
+vertical or horizontal server layout and a window height. Vertical content is
+380 points wide; horizontal content uses 360-point columns, 18-point gaps, and
+24-point outer padding, so four columns use 1518 points. The height comes only
+from the `windowHeight` setting (400–1600 points, default 820) and never from
+the amount of content: `ServerLayout.contentSize` clamps it, and the header is
+pinned while the LOCAL and SERVERS sections sit in one `ScrollView`. The scroll
+bar appears only when the content is taller than the window, and
+`DarkScrollerStyle` gives the enclosing `NSScrollView` a dark appearance with a
+light knob to match the panel.
+
+Each server is a collapsible row. `ServerStatus.chips` turns warning and error
+metrics into chips (errors first, at most three plus a `+N` count, and a single
+`unreachable` chip when SSH fails). Ping and HTTP stay in the row heading.
+`ServerExpansion` decides which rows are open: a server with a warning or error
+opens by itself, a click overrides that, and the override is dropped once the
+server is healthy again. Open state is keyed by server name, because
+`ServerStatus.id` changes on every refresh. The LOCAL section collapses to an
+address line and a utilization line in the same way. Local GPU utilization is
+read from the IOKit accelerator statistics, load from `getloadavg`, and the
+optional external address by `ExternalIPService`, which makes at most one
+request every ten minutes, keeps its last good value, and shows only a reply
+that parses as an IP address. Disk and memory use separate rows, each including a secondary reading.
 Each heading shows SSH connectivity as a dot, plus colored ping and HTTP
 results. These checks remain part of overall health evaluation even though
 they are omitted from the metric rows. The menu bar retains overall health.
@@ -132,6 +150,12 @@ Each server refresh uses:
 External commands run through `CommandRunner`, which captures standard output
 and error, enforces timeouts, and avoids invoking a local shell.
 
+The `updates` check counts the `Inst` lines of `apt-get -s upgrade` and treats
+a package whose origin names a security suite as a security update; the remote
+emits `updates=<security> <other>`. The `monit` check reads `sudo -n monit
+summary`, finds the Status and Type columns from the header line, and emits
+`monit=<ok>/<total>`; without the sudo rule it emits `monit=n/a`.
+
 The remote SSH command emits predictable `key=value` lines. Service metrics use
 systemd cgroups and `/proc` to calculate memory and CPU usage. CPU sampling
 prefers cumulative cgroup CPU time (including exiting workers), uses monotonic
@@ -148,6 +172,11 @@ this order:
 2. Otherwise, any `WARNING` metric makes the server `WARNING`.
 3. Otherwise, any reliable successful metric makes the server `OK`.
 4. Otherwise, the server is `UNKNOWN`.
+
+Pending updates are a warning for any security update or ten or more updates in
+total, and never an error (`SeverityEngine.updatesTotalWarning`). Monit is `OK`
+only when every service is OK, an error otherwise, and unknown when it cannot
+be read.
 
 Threshold defaults are defined in `PreferencesStore.swift` and configurable in
 Preferences. PHP-FPM CPU has its own warning/critical pair; other services share

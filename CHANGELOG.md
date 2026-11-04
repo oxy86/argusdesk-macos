@@ -2,6 +2,34 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 1.0
+
+- Made the dashboard fit many servers. Each server is now one line showing its
+  SSH dot, name, ping, and HTTP result, with a colored chip for every unhealthy
+  check (for example `php-fpm` or `disk`). Click a line to show its full
+  details; several servers can be open at once.
+- Servers with a warning or error open automatically. A row you close stays
+  closed until the server recovers, so the next problem opens it again.
+- Gave the dashboard a fixed height, set by **Window height** in Preferences.
+  The header stays in place and the rest scrolls, with a scroll bar only when
+  the open content is taller than the window. The scroll bar now matches the
+  black panel.
+- Condensed the LOCAL section to two lines: internal and external address with
+  the macOS version, then CPU, GPU, load, memory, and disk. Click it for
+  uptime, all three load averages, battery, network, disk activity, and swap.
+- Added local GPU utilization and load averages for the Mac.
+- Added an optional external IP address for the Mac, looked up about every ten
+  minutes from a public service. Turn it off with **Show external IP address**
+  in Preferences.
+- Added the optional `updates` check, which counts pending package updates
+  and reports security updates separately. It warns for any security update or
+  ten or more updates in total.
+- Added the optional `monit` check, which shows how many Monit services are
+  healthy (for example `19/19`). It is an error unless every service is OK and
+  needs passwordless `sudo` for `monit summary` on the server.
+- Added regression coverage for the fixed window height, local readings, the
+  external IP reply check, row chips and expansion, and both new checks.
+
 ## 0.9
 
 - Consolidated the menu bar into a single icon using the bundled artwork,
