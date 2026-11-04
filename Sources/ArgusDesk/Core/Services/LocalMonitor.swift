@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import IOKit
 import IOKit.ps
 
 /// Reads local Mac status for the main window.
@@ -25,7 +26,10 @@ final class LocalMonitor {
             memory: memoryUsage(),
             disk: diskUsage(),
             network: network(),
-            swap: swapUsage()
+            swap: swapUsage(),
+            gpu: gpuUsage(),
+            loadAverage: loadAverage(),
+            internalIP: primaryInterface()?.address ?? "offline"
         )
     }
 
@@ -165,12 +169,21 @@ final class LocalMonitor {
         }
     }
 
-    /// First active non-loopback IPv4 interface.
+    /// Interface name and address, such as `en0 192.168.1.20`.
     private func network() -> String {
+        guard let interface = primaryInterface() else {
+            return "offline"
+        }
+
+        return "\(interface.name) \(interface.address)"
+    }
+
+    /// First active non-loopback IPv4 interface, or nil when offline.
+    private func primaryInterface() -> (name: String, address: String)? {
         var interfaces: UnsafeMutablePointer<ifaddrs>?
 
         guard getifaddrs(&interfaces) == 0, let firstInterface = interfaces else {
-            return "n/a"
+            return nil
         }
 
         defer {
@@ -213,10 +226,68 @@ final class LocalMonitor {
             }
 
             let addressText = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-            return "\(name) \(String(decoding: addressText, as: UTF8.self))"
+            return (name, String(decoding: addressText, as: UTF8.self))
         }
 
-        return "offline"
+        return nil
+    }
+
+    /// GPU utilization read from the graphics accelerator's IOKit statistics.
+    ///
+    /// This needs no special permission. With more than one accelerator, the
+    /// busiest one is reported. `n/a` means the system exposes no reading.
+    private func gpuUsage() -> String {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iterator) == KERN_SUCCESS else {
+            return "n/a"
+        }
+
+        defer {
+            IOObjectRelease(iterator)
+        }
+
+        var busiest: Int?
+        while true {
+            let service = IOIteratorNext(iterator)
+            if service == 0 {
+                break
+            }
+
+            defer {
+                IOObjectRelease(service)
+            }
+
+            if let properties = IORegistryEntryCreateCFProperty(service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+               let value = Self.gpuUtilization(from: properties) {
+                busiest = max(busiest ?? 0, value)
+            }
+        }
+
+        return busiest.map { "\($0)%" } ?? "n/a"
+    }
+
+    /// Extracts the whole-device utilization percentage from accelerator statistics.
+    static func gpuUtilization(from statistics: [String: Any]) -> Int? {
+        guard let number = statistics["Device Utilization %"] as? NSNumber else {
+            return nil
+        }
+
+        return min(max(number.intValue, 0), 100)
+    }
+
+    /// Load averages for the last 1, 5 and 15 minutes.
+    private func loadAverage() -> String {
+        var averages = [Double](repeating: 0, count: 3)
+        guard getloadavg(&averages, 3) == 3 else {
+            return "n/a"
+        }
+
+        return Self.formatLoadAverage(averages)
+    }
+
+    /// Formats load averages with two decimals, separated by spaces.
+    static func formatLoadAverage(_ values: [Double]) -> String {
+        values.map { String(format: "%.2f", $0) }.joined(separator: " ")
     }
 
     /// Reads aggregate CPU ticks for all processors.

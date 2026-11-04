@@ -53,15 +53,20 @@ final class MonitoringPresentationTests: XCTestCase {
         XCTAssertEqual(engine.serverSeverity(for: off), .unknown)
     }
 
-    func testFourServerLayoutsGrowWithGPUProcessInventory() {
+    /// The window height comes from the setting, never from the content, so a
+    /// long server list or GPU process inventory scrolls instead of growing it.
+    func testWindowHeightIsFixedBySettingAndClamped() {
         let metric = Metric(label: "load", value: "0.1", severity: .ok)
         let ordinary = ServerStatus(name: "example", severity: .ok, headline: "", metrics: [metric])
         var servers = Array(repeating: ordinary, count: 4)
         XCTAssertEqual(ServerLayout.horizontal.contentSize(servers: servers).width, 1518)
         XCTAssertEqual(ServerLayout.vertical.contentSize(servers: servers).height, 820)
+
         let processes = (1...30).map { Metric(label: "pid \($0)", value: "runner", severity: .ok) }
         servers[3] = ServerStatus(name: "compute", severity: .ok, headline: "", metrics: [metric] + processes)
-        XCTAssertGreaterThan(ServerLayout.vertical.contentSize(servers: servers).height, 820)
-        XCTAssertGreaterThan(ServerLayout.horizontal.contentSize(servers: servers).height, 420)
+        XCTAssertEqual(ServerLayout.vertical.contentSize(servers: servers).height, 820)
+        XCTAssertEqual(ServerLayout.horizontal.contentSize(servers: servers, windowHeight: 700).height, 700)
+        XCTAssertEqual(ServerLayout.vertical.contentSize(servers: servers, windowHeight: 50).height, 400)
+        XCTAssertEqual(ServerLayout.vertical.contentSize(servers: servers, windowHeight: 99_999).height, 1600)
     }
 }

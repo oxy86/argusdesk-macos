@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// The view is intentionally narrow and dense. It renders local Mac information
 /// first, followed by remote server status, matching the agreed desktop
-/// companion layout.
+/// companion layout. The header stays pinned and the rest scrolls when needed.
 struct ContentView: View {
     /// Complete dashboard snapshot to render.
     let viewModel: DashboardViewModel
@@ -19,24 +19,32 @@ struct ContentView: View {
                 showPreferences: showPreferences
             )
 
-            if let validation = viewModel.configValidation,
-               validation.hasProblems {
-                ConfigValidationView(validation: validation)
-                Divider()
-                    .overlay(Color.white.opacity(0.10))
+            // Everything below the pinned header scrolls. The scroll bar only
+            // appears when the content is taller than the window.
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let validation = viewModel.configValidation,
+                       validation.hasProblems {
+                        ConfigValidationView(validation: validation)
+                        Divider()
+                            .overlay(Color.white.opacity(0.10))
+                    }
+
+                    LocalStatusView(status: viewModel.local)
+
+                    Divider()
+                        .overlay(Color.white.opacity(0.10))
+
+                    ServerListView(
+                        servers: viewModel.servers,
+                        refreshInterval: viewModel.remoteRefreshInterval
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(DarkScrollerStyle())
             }
-
-            LocalStatusView(status: viewModel.local)
-
-            Divider()
-                .overlay(Color.white.opacity(0.10))
-
-            ServerListView(
-                servers: viewModel.servers,
-                refreshInterval: viewModel.remoteRefreshInterval
-            )
-
-            Spacer(minLength: 0)
+            .scrollIndicators(.automatic)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -123,5 +131,30 @@ private struct ConfigValidationView: View {
 private struct PanelBackground: View {
     var body: some View {
         Color.black
+    }
+}
+
+/// Makes the dashboard's scroll bar match the black panel.
+///
+/// SwiftUI draws the standard macOS scroll bar, which follows the system's
+/// light or dark setting and looks out of place on a black window. This finds
+/// the scroll view that contains it and gives it the dark appearance with a
+/// light knob. It changes only how the bar looks, not how scrolling works.
+private struct DarkScrollerStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        NSView()
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        // The view is not yet inside the scroll view when it is first created,
+        // so apply the style on the next pass through the run loop.
+        Task { @MainActor [weak view] in
+            guard let scrollView = view?.enclosingScrollView else {
+                return
+            }
+
+            scrollView.appearance = NSAppearance(named: .darkAqua)
+            scrollView.scrollerKnobStyle = .light
+        }
     }
 }

@@ -38,6 +38,13 @@ private struct DashboardRootView: View {
     @ObservedObject var appDelegate: AppDelegate
     /// Shared with Preferences so changing the arrangement resizes the window.
     @AppStorage("serverLayout") private var layout: ServerLayout = .vertical
+    /// Fixed window height chosen in Preferences, in points.
+    @AppStorage("windowHeight") private var windowHeight = ServerLayout.defaultWindowHeight
+
+    /// Fixed window size for the current arrangement and height setting.
+    private var windowSize: CGSize {
+        layout.contentSize(servers: appDelegate.dashboardViewModel.servers, windowHeight: windowHeight)
+    }
 
     var body: some View {
         ContentView(
@@ -45,7 +52,6 @@ private struct DashboardRootView: View {
             showPreferences: { appDelegate.showPreferencesAction() }
         )
         .onAppear { appDelegate.openDashboard = { openWindow(id: "dashboard") } }
-        .frame(width: layout.contentSize(servers: appDelegate.dashboardViewModel.servers).width,
-               height: layout.contentSize(servers: appDelegate.dashboardViewModel.servers).height)
+        .frame(width: windowSize.width, height: windowSize.height)
     }
 }

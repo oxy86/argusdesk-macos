@@ -144,6 +144,29 @@ struct LocalStatus {
     /// Allocated swap and sampled disk busy time; n/a means unsupported.
     var swap: String = "-"
     var diskBusy: String = "n/a"
+
+    /// Local GPU utilization, such as `20%`, or `n/a` when unavailable.
+    var gpu: String = "n/a"
+
+    /// 1, 5 and 15 minute load averages, such as `3.92 3.54 3.54`.
+    var loadAverage: String = "-"
+
+    /// Address of the active network interface, or `offline`.
+    var internalIP: String = "-"
+
+    /// Public address, `…` while it is being fetched, `n/a` if it could not be
+    /// fetched, or nil when the lookup is turned off in Preferences.
+    var externalIP: String? = nil
+
+    /// First line of the collapsed LOCAL block: addresses and OS version.
+    var addressSummary: String {
+        [internalIP, externalIP, osVersion].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// The first (1 minute) load average, used by the collapsed LOCAL block.
+    var shortLoad: String {
+        loadAverage.split(separator: " ").first.map(String.init) ?? loadAverage
+    }
 }
 
 /// Display state for one remote server.
@@ -195,6 +218,8 @@ struct ServerStatus: Identifiable {
                 pendingMetric(label: "db", key: "mariadb", config: config),
                 pendingMetric(label: "php-fpm", key: "php_fpm", config: config),
                 pendingMetric(label: "memcached", key: "memcached", config: config),
+                pendingMetric(label: "updates", key: "updates", config: config),
+                pendingMetric(label: "monit", key: "monit", config: config),
                 pendingMetric(label: "gpu", key: "gpu", config: config)
             ]
         )

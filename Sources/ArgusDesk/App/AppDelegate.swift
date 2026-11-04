@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Local Mac monitor used by the refresh timer.
     private let localMonitor = LocalMonitor()
 
+    /// Optional public-address lookup for the local section.
+    private let externalIPService = ExternalIPService()
+
     /// Persists user-editable app behavior settings.
     private let preferencesStore = PreferencesStore()
 
@@ -158,7 +161,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Captures fresh local status and updates the dashboard.
     private func refreshLocalStatus() {
-        dashboardViewModel = dashboardViewModel.updating(local: localMonitor.snapshot(label: localLabel))
+        // Defaults to on; Preferences stores the switch under this key.
+        let externalIPEnabled = UserDefaults.standard.object(forKey: "externalIPEnabled") as? Bool ?? true
+        externalIPService.refreshIfDue(enabled: externalIPEnabled)
+        var local = localMonitor.snapshot(label: localLabel)
+        local.externalIP = externalIPService.display(enabled: externalIPEnabled)
+        dashboardViewModel = dashboardViewModel.updating(local: local)
     }
 
     /// Starts the local refresh timer.

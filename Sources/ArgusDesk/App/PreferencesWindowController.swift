@@ -66,6 +66,10 @@ private struct PreferencesView: View {
 
     /// Layout changes are saved and applied immediately to the dashboard.
     @AppStorage("serverLayout") private var serverLayout: ServerLayout = .vertical
+    /// Fixed dashboard window height in points; the dashboard scrolls if taller.
+    @AppStorage("windowHeight") private var windowHeight = ServerLayout.defaultWindowHeight
+    /// Whether to look up the public IP address of this Mac (on by default).
+    @AppStorage("externalIPEnabled") private var externalIPEnabled = true
     /// Closes the preferences window.
     @Environment(\.dismiss) private var dismiss
 
@@ -265,6 +269,10 @@ private struct PreferencesView: View {
                         }
                         .labelsHidden()
                     }
+                    GridRow {
+                        Text("Window height")
+                        Stepper("\(windowHeight) pt", value: $windowHeight, in: ServerLayout.windowHeightRange, step: 20)
+                    }
                 }
                 .padding(.bottom, 8)
 
@@ -280,6 +288,9 @@ private struct PreferencesView: View {
                 }))
                 .disabled(Bundle.main.bundleURL.pathExtension != "app")
                 Toggle("Start with dashboard hidden", isOn: $startHidden)
+                Toggle("Show external IP address", isOn: $externalIPEnabled)
+                Text("Asks api.ipify.org for this Mac's public address about every 10 minutes.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Monitoring continues when the window is closed or hidden. Quit stops monitoring.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !loginMessage.isEmpty { Text(loginMessage).font(.caption).foregroundStyle(.secondary) }
