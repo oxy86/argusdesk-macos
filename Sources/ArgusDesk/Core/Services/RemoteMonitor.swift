@@ -120,7 +120,9 @@ struct RemoteMonitor {
                 serviceMetric(label: "nginx", key: "nginx", values: [:], enabledChecks: enabledChecks),
                 serviceMetric(label: "db", key: "mariadb", values: [:], enabledChecks: enabledChecks),
                 serviceMetric(label: "php-fpm", key: "php_fpm", values: [:], enabledChecks: enabledChecks),
-                serviceMetric(label: "memcached", key: "memcached", values: [:], enabledChecks: enabledChecks)
+                serviceMetric(label: "memcached", key: "memcached", values: [:], enabledChecks: enabledChecks),
+                basicMetric(label: "updates", key: "updates", values: [:], enabledChecks: enabledChecks, missingValue: "-"),
+                basicMetric(label: "monit", key: "monit", values: [:], enabledChecks: enabledChecks, missingValue: "-")
             ] + (enabledChecks.contains("gpu") ? [Metric(label: "gpu", value: "n/a", severity: .unknown)] : [])
         }
 
@@ -133,7 +135,9 @@ struct RemoteMonitor {
             serviceMetric(label: "nginx", key: "nginx", values: values, enabledChecks: enabledChecks),
             serviceMetric(label: "db", key: "mariadb", values: values, enabledChecks: enabledChecks),
             serviceMetric(label: "php-fpm", key: "php_fpm", values: values, enabledChecks: enabledChecks),
-            serviceMetric(label: "memcached", key: "memcached", values: values, enabledChecks: enabledChecks)
+            serviceMetric(label: "memcached", key: "memcached", values: values, enabledChecks: enabledChecks),
+            updatesMetric(values: values, enabledChecks: enabledChecks),
+            basicMetric(label: "monit", key: "monit", values: values, enabledChecks: enabledChecks)
         ] + (enabledChecks.contains("disk") ? [Metric(label: "disk busy", value: values["disk_busy"] ?? "n/a", severity: .unknown)] : [])
           + (enabledChecks.contains("memory") ? [Metric(label: "swap", value: values["swap"] ?? "n/a", severity: .unknown)] : [])
           + (enabledChecks.contains("gpu") ? NVIDIAMetrics().parse(result.stdout) : [])
@@ -158,6 +162,36 @@ struct RemoteMonitor {
             value: value ?? missingValue,
             severity: value == nil ? .unknown : .ok
         )
+    }
+
+    /// Builds the pending-updates metric from the remote `updates=<security> <other>` line.
+    private func updatesMetric(values: [String: String], enabledChecks: [String]) -> Metric {
+        guard enabledChecks.contains("updates") else {
+            return Metric(label: "updates", value: "off", severity: .unknown)
+        }
+
+        guard let raw = values["updates"], let text = Self.formatUpdates(raw) else {
+            return Metric(label: "updates", value: "n/a", severity: .unknown)
+        }
+
+        return Metric(label: "updates", value: text, severity: .ok)
+    }
+
+    /// Turns the remote `<security> <other>` counts into display text.
+    ///
+    /// Returns nil when the remote could not count updates (no apt) or sent
+    /// something unexpected, so the dashboard shows `n/a` instead of a guess.
+    static func formatUpdates(_ raw: String) -> String? {
+        let parts = raw.split(separator: " ").map(String.init)
+        guard parts.count == 2, let security = Int(parts[0]), let other = Int(parts[1]), security >= 0, other >= 0 else {
+            return nil
+        }
+
+        if security == 0 && other == 0 {
+            return "up to date"
+        }
+
+        return "\(security) security · \(other) other"
     }
 
     /// Builds one service metric from `systemctl is-active` output.
@@ -247,6 +281,20 @@ struct RemoteMonitor {
         awk -v a="$busy_a" -v b="$busy_b" -v ta="$time_a" -v tb="$time_b" 'BEGIN {if (tb > ta && b >= a) {v=(b-a)/(10*(tb-ta)); if(v>100)v=100; printf "disk_busy=%.0f%%\\n",v}}'
       fi
     fi
+    if [ "\(enabledChecks.contains("updates") ? "1" : "0")" = "1" ]; then
+      # Simulated upgrade: lists what would be installed and changes nothing.
+      # The origin in parentheses names the suite, e.g. "...-security".
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get -s upgrade 2>/dev/null | awk '/^Inst / { origin = substr($0, index($0, " (")); if (origin ~ /[Ss]ecurity/) sec++; else other++ } END { printf "updates=%d %d\\n", sec + 0, other + 0 }'
+      else
+        echo 'updates=n/a'
+      fi
+    fi
+    if [ "\(enabledChecks.contains("monit") ? "1" : "0")" = "1" ]; then
+      # Needs passwordless sudo for exactly this command; otherwise prints n/a.
+      # Columns are located from the header so long names cannot shift them.
+      sudo -n monit summary 2>/dev/null | awk '!seen && /Service Name/ { s = index($0, "Status"); t = index($0, "Type"); seen = 1; next } seen && NF { total++; st = substr($0, s, t - s); gsub(/^ +| +$/, "", st); if (st == "OK") ok++ } END { if (seen) printf "monit=%d/%d\\n", ok + 0, total + 0; else print "monit=n/a" }'
+    fi
     if [ "\(services.isEmpty ? "0" : "1")" = "1" ] && command -v systemctl >/dev/null 2>&1; then
       hz="$(getconf CLK_TCK 2>/dev/null || echo 100)"
       cpus="$(nproc 2>/dev/null || echo 1)"
@@ -333,6 +381,8 @@ struct RemoteMonitor {
         "mariadb",
         "php_fpm",
         "memcached",
-        "gpu"
+        "gpu",
+        "updates",
+        "monit"
     ]
 }

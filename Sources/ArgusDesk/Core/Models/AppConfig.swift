@@ -6,7 +6,7 @@ import Foundation
 /// identifiers produce a validation warning instead of silently running.
 let knownCheckKeys: Set<String> = [
     "ssh", "ping", "http", "load", "disk", "memory",
-    "nginx", "mariadb", "php_fpm", "memcached", "gpu"
+    "nginx", "mariadb", "php_fpm", "memcached", "gpu", "updates", "monit"
 ]
 
 /// Top-level configuration loaded from `servers.json` or `servers.example.json`.

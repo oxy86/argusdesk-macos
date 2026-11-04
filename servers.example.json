@@ -10,7 +10,7 @@
       "ssh_port": 22,
       "refresh_seconds": null,
       "http_url": "https://example.com",
-      "http_user_agent": "ArgusDesk/0.8",
+      "http_user_agent": "ArgusDesk/1.0",
       "enabled_checks": [
         "ssh",
         "ping",
@@ -21,7 +21,9 @@
         "nginx",
         "mariadb",
         "php_fpm",
-        "memcached"
+        "memcached",
+        "updates",
+        "monit"
       ]
     }
   ]

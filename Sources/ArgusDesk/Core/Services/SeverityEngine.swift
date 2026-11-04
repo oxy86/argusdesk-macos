@@ -86,6 +86,10 @@ struct SeverityEngine {
             percentSeverity(metric.value)
         case "nginx", "db", "php-fpm", "memcached":
             serviceSeverity(metric.value, isPHP: metric.label == "php-fpm")
+        case "updates":
+            updatesSeverity(metric.value)
+        case "monit":
+            monitSeverity(metric.value)
         case "load":
             metric.value == "n/a" || metric.value == "-" ? .unknown : .ok
         default:
@@ -164,6 +168,39 @@ struct SeverityEngine {
         }
 
         return .ok
+    }
+
+    /// Pending updates turn orange for any security update, or for ten or more
+    /// updates of any kind. They are never critical.
+    static let updatesTotalWarning = 10
+
+    /// Severity for strings such as `1 security · 3 other` or `up to date`.
+    private func updatesSeverity(_ value: String) -> Severity {
+        if value == "up to date" {
+            return .ok
+        }
+
+        let counts = numberScanner(in: value)
+        guard counts.count == 2 else {
+            return .unknown
+        }
+
+        if counts[0] > 0 || counts[0] + counts[1] >= Double(Self.updatesTotalWarning) {
+            return .warning
+        }
+
+        return .ok
+    }
+
+    /// Severity for Monit's `<ok>/<total>` count: every service must be OK, so
+    /// `18/19` is an error.
+    private func monitSeverity(_ value: String) -> Severity {
+        let parts = value.split(separator: "/").compactMap { Int($0) }
+        guard parts.count == 2, parts[1] > 0 else {
+            return .unknown
+        }
+
+        return parts[0] == parts[1] ? .ok : .error
     }
 
     /// Severity for service strings such as `active 0.12GB 1.4%`.
