@@ -1,6 +1,6 @@
 # ArgusDesk for macOS Roadmap
 
-This roadmap tracks work beyond the current 1.0 release. Implemented changes
+This roadmap tracks work beyond the current 1.1 release. Implemented changes
 and release history are documented in [CHANGELOG.md](CHANGELOG.md); technical
 details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
@@ -11,7 +11,7 @@ details are in [README_DEVELOPER.md](README_DEVELOPER.md).
 
 ## Configuration
 
-- Allow systemd service unit mappings to be configured per server.
+- Add a Preferences editor for per-server service unit names.
 - Add an editor for server connections, labels, and enabled checks in Preferences.
 - Improve configuration error presentation and preserve the active dashboard
   when a replacement configuration cannot be loaded.

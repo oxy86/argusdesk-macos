@@ -2,6 +2,12 @@
 
 All notable changes to ArgusDesk for macOS are documented in this file.
 
+## 1.1
+
+- Added the optional per-server `service_units` setting, so a service running
+  under a different systemd unit name (for example `memcached-custom`) is
+  monitored correctly. Unit names are validated before use.
+
 ## 1.0
 
 - Made the dashboard fit many servers. Each server is now one line showing its
