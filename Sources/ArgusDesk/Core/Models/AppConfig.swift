@@ -9,6 +9,25 @@ let knownCheckKeys: Set<String> = [
     "nginx", "mariadb", "php_fpm", "memcached", "gpu", "updates", "monit"
 ]
 
+/// Services whose systemd unit name may be overridden with `service_units`.
+///
+/// The dictionary key in `servers.json` is one of these identifiers; the value
+/// is the unit name that server actually uses (for example a renamed unit).
+let serviceUnitKeys: Set<String> = ["nginx", "mariadb", "php_fpm", "memcached"]
+
+/// Returns true when `name` is safe to hand to `systemctl` on a remote shell.
+///
+/// Only letters, digits and `@ : . _ -` are allowed. That covers every real
+/// systemd unit name while ruling out spaces, quotes and shell symbols, so a
+/// configured name can never turn into extra remote commands.
+func isValidServiceUnitName(_ name: String) -> Bool {
+    guard !name.isEmpty, name.count <= 128 else { return false }
+    return name.unicodeScalars.allSatisfy {
+        ($0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains(Character($0))))
+            || "@:._-".unicodeScalars.contains($0)
+    }
+}
+
 /// Top-level configuration loaded from `servers.json` or `servers.example.json`.
 ///
 /// Configuration shapes remote monitoring and default refresh intervals.
@@ -127,6 +146,13 @@ struct ServerConfig: Decodable, Encodable {
     /// Nil means use the global remote refresh interval from Preferences.
     let refreshSeconds: Int?
 
+    /// Optional per-server systemd unit names, keyed by service identifier.
+    ///
+    /// Example: `["memcached": "memcached-custom"]` for a server whose
+    /// memcached unit is not called plain `memcached`. Missing entries use the
+    /// default unit name, so existing configurations keep working unchanged.
+    let serviceUnits: [String: String]
+
     /// Stable identity for scheduling independently of display-name changes.
     var connectionID: String { "\(sshUser)@\(host):\(sshPort)" }
 
@@ -143,6 +169,7 @@ struct ServerConfig: Decodable, Encodable {
         case httpURL = "http_url"
         case httpUserAgent = "http_user_agent"
         case enabledChecks = "enabled_checks"
+        case serviceUnits = "service_units"
     }
 
     /// Creates a server config with all fields set explicitly.
@@ -158,7 +185,8 @@ struct ServerConfig: Decodable, Encodable {
         httpUserAgent: String?,
         enabledChecks: [String],
         refreshSeconds: Int? = nil,
-        label: String? = nil
+        label: String? = nil,
+        serviceUnits: [String: String] = [:]
     ) {
         self.name = name
         self.label = label
@@ -169,6 +197,7 @@ struct ServerConfig: Decodable, Encodable {
         self.httpUserAgent = httpUserAgent
         self.enabledChecks = enabledChecks
         self.refreshSeconds = refreshSeconds
+        self.serviceUnits = serviceUnits
     }
 
     /// Applies defaults for optional SSH settings and keeps HTTP optional.
@@ -182,6 +211,7 @@ struct ServerConfig: Decodable, Encodable {
         sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? Self.defaultSSHPort
         httpUserAgent = try container.decodeIfPresent(String.self, forKey: .httpUserAgent)
         enabledChecks = try container.decodeIfPresent([String].self, forKey: .enabledChecks) ?? []
+        serviceUnits = try container.decodeIfPresent([String: String].self, forKey: .serviceUnits) ?? [:]
 
         if try !container.contains(.refreshSeconds) || container.decodeNil(forKey: .refreshSeconds) {
             refreshSeconds = nil

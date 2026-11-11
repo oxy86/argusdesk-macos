@@ -104,7 +104,7 @@ struct RemoteMonitor {
                 "-o", "ConnectTimeout=5",
                 "-p", "\(server.sshPort)",
                 "\(server.sshUser)@\(server.host)",
-                Self.remoteCommand(enabledChecks: Set(server.enabledChecks))
+                Self.remoteCommand(enabledChecks: Set(server.enabledChecks), serviceUnits: server.serviceUnits)
             ],
             timeoutSeconds: Self.sshTimeoutSeconds
         )
@@ -250,11 +250,24 @@ struct RemoteMonitor {
     }
 
     /// Read-only remote shell snippet that emits predictable key-value lines.
-    static func remoteCommand(enabledChecks: Set<String>) -> String {
-        // Check identifiers are selected from known constants, never interpolated
-        // from arbitrary configuration text into the remote shell.
-        let services = [("nginx", "nginx"), ("mariadb", "mariadb"),
-                        ("php_fpm", "\"$php_fpm_unit\""), ("memcached", "memcached")]
+    ///
+    /// `serviceUnits` optionally renames a service's systemd unit (for example
+    /// `["memcached": "memcached-custom"]`). Only names that pass
+    /// `isValidServiceUnitName` are used, and they are single-quoted, so
+    /// configuration text can never inject extra remote commands.
+    static func remoteCommand(enabledChecks: Set<String>, serviceUnits: [String: String] = [:]) -> String {
+        // Check identifiers are selected from known constants. The only
+        // configured text allowed in is a validated, quoted unit name.
+        func unit(_ key: String, default fallback: String) -> String {
+            if let custom = serviceUnits[key], isValidServiceUnitName(custom) {
+                return "'\(custom)'"
+            }
+            return fallback
+        }
+        let services = [("nginx", unit("nginx", default: "nginx")),
+                        ("mariadb", unit("mariadb", default: "mariadb")),
+                        ("php_fpm", unit("php_fpm", default: "\"$php_fpm_unit\"")),
+                        ("memcached", unit("memcached", default: "memcached"))]
             .filter { enabledChecks.contains($0.0) }
             .map { "svc_metric \($0.0) \($0.1)" }.joined(separator: "\n")
         return """

@@ -108,7 +108,7 @@ keep private configuration out of the repository.
       "ssh_port": 22,
       "refresh_seconds": null,
       "http_url": "https://example.com",
-      "http_user_agent": "ArgusDesk/1.0",
+      "http_user_agent": "ArgusDesk/1.1",
       "enabled_checks": [
         "ssh",
         "ping",
@@ -155,6 +155,24 @@ For an NVIDIA compute server without web services, for example, use:
 ```json
 "enabled_checks": ["ssh", "ping", "load", "disk", "memory", "gpu"]
 ```
+
+### Custom service unit names
+
+Service checks look for the usual systemd unit names (`nginx`, `mariadb`, the
+installed `phpX.Y-fpm`, and `memcached`). If a server runs a service under a
+different unit name, add an optional `service_units` map to that server:
+
+```json
+"service_units": {
+  "memcached": "memcached-custom"
+}
+```
+
+Supported keys are `nginx`, `mariadb`, `php_fpm`, and `memcached`. Unit names
+may contain only letters, digits, and `@ : . _ -`; anything else is ignored with
+a configuration warning. Servers without the setting keep the default names.
+The check reads systemd's state for the unit, so it does not matter whether the
+service listens on a TCP port or a Unix socket.
 
 ### Monit and updates
 

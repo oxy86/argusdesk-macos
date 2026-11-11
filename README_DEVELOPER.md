@@ -117,6 +117,15 @@ thresholds. Raw numeric readings are preserved through severity evaluation;
 missing utilization is not inferred from VRAM text.
 Run `swift test` for parser and disabled-check regression coverage.
 
+## Service Unit Names
+
+`ServerConfig.serviceUnits` holds the optional `service_units` map. In
+`RemoteMonitor.remoteCommand`, a configured unit replaces the default only if
+`isValidServiceUnitName` accepts it (letters, digits, `@ : . _ -`); it is then
+single-quoted into the `svc_metric` call. Invalid names fall back to the default
+and `ConfigLoader` reports a warning. `ServerEditor` carries the map through so
+Preferences edits never drop it.
+
 ## Configuration Loading
 
 `ConfigLoader` loads local `servers.json`. The committed `servers.example.json`

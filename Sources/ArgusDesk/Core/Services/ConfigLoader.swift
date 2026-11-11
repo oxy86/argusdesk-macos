@@ -121,6 +121,19 @@ struct ConfigLoader {
             )
         }
 
+        // Unit overrides must name a known service and a safe unit name.
+        for (key, unit) in server.serviceUnits.sorted(by: { $0.key < $1.key }) {
+            if !serviceUnitKeys.contains(key) {
+                validation.warnings.append(
+                    "Server \"\(name.isEmpty ? "(unnamed)" : name)\" has an unknown service_units key: \(key)"
+                )
+            } else if !isValidServiceUnitName(unit) {
+                validation.warnings.append(
+                    "Server \"\(name.isEmpty ? "(unnamed)" : name)\" has an invalid service_units name for \(key); the default unit is used."
+                )
+            }
+        }
+
         // If the server has an HTTP URL, verify it parses correctly.
         if server.httpURL == nil, server.enabledChecks.contains("http") {
             validation.warnings.append(

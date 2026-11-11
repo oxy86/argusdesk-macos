@@ -4,7 +4,7 @@ import Foundation
 /// release notes.
 enum AppVersion {
     /// Human-readable semantic version for this local build.
-    static let current = "1.0"
+    static let current = "1.1"
 
     /// Compact UI label.
     static let displayName = "v\(current)"

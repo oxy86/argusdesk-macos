@@ -33,6 +33,10 @@ struct ServerEditor: Identifiable {
     /// Optional per-server refresh override.
     var refreshSeconds: Int?
 
+    /// Optional per-server systemd unit names, carried through unchanged so
+    /// editing a server in Preferences never drops them.
+    var serviceUnits: [String: String]
+
     /// Creates an editor from an existing `ServerConfig`.
     init(from config: ServerConfig) {
         self.name = config.label ?? ""
@@ -43,6 +47,7 @@ struct ServerEditor: Identifiable {
         self.httpUserAgent = config.httpUserAgent
         self.enabledChecks = config.enabledChecks
         self.refreshSeconds = config.refreshSeconds
+        self.serviceUnits = config.serviceUnits
     }
 
     /// Creates a blank new server editor with defaults.
@@ -55,6 +60,7 @@ struct ServerEditor: Identifiable {
         self.httpUserAgent = nil
         self.enabledChecks = []
         self.refreshSeconds = nil
+        self.serviceUnits = [:]
     }
 }
 
@@ -86,7 +92,8 @@ extension ServerEditor {
             httpUserAgent: httpUserAgent,
             enabledChecks: enabledChecks,
             refreshSeconds: refreshSeconds,
-            label: trimmedName.isEmpty ? nil : trimmedName
+            label: trimmedName.isEmpty ? nil : trimmedName,
+            serviceUnits: serviceUnits
         )
     }
 }
