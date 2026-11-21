@@ -233,10 +233,11 @@ private struct PreferencesView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Button(action: pickConfigFile) {
-                                Image(systemName: "folder.badge.gearpath")
-                                    .foregroundStyle(.secondary)
+                                Label("Choose File…", systemImage: "folder")
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.bordered)
+                            .fixedSize()
+                            .accessibilityLabel("Choose configuration file")
                             .help("Choose a specific config file")
                         }
                     }
