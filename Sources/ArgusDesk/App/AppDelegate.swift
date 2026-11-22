@@ -261,8 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             serverCount: serverConfigs.count,
             servers: serverConfigs,
             localLabel: localLabel,
-            saveRefreshIntervals: { [weak self] values, label in
-                guard let path = self?.configFilePath else { return "Select a configuration file first." }
+            saveRefreshIntervals: { [path = preferences.configFilePath] values, label in
+                guard let path else { return "Select a configuration file first." }
                 return ConfigSaver.saveRefreshIntervals(to: URL(fileURLWithPath: path), values: values, localLabel: label)
             },
             apply: { [weak self] preferences in
