@@ -422,7 +422,8 @@ private struct PreferencesView: View {
 
                     Button("Apply") {
                         saveFeedback = ""
-                        if configFilePath == originalConfigPath, let error = saveRefreshIntervals(serverRefreshText, localLabelText) {
+                        if configFilePath != nil, configFilePath == originalConfigPath,
+                           let error = saveRefreshIntervals(serverRefreshText, localLabelText) {
                             saveFeedback = error
                             return
                         }
