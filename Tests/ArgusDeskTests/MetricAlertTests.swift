@@ -21,6 +21,21 @@ final class MetricAlertTests: XCTestCase {
         XCTAssertTrue(next[0].body.contains("90%"))
     }
 
+    func testHealthyNamesakeCannotRecoverAnotherServersMemoryAlert() {
+        var tracker = MetricAlerts()
+        let critical = Metric(label: "mem", value: "95%", severity: .error)
+        let healthy = Metric(label: "mem", value: "50%", severity: .ok)
+        let firstHost = ServerStatus(name: "web", severity: .error, headline: "", metrics: [critical])
+        let secondHost = ServerStatus(name: "web", severity: .ok, headline: "", metrics: [healthy])
+        let snapshot = [firstHost, secondHost]
+
+        let initial = tracker.evaluate(servers: snapshot, thresholds: .default, recovery: true)
+        XCTAssertEqual(initial.map(\.title), ["web — Memory critical"])
+
+        let unchanged = tracker.evaluate(servers: snapshot, thresholds: .default, recovery: true)
+        XCTAssertTrue(unchanged.isEmpty, "Neither host changed its memory state")
+    }
+
     func testUnknownDoesNotCauseFalseRecoveryOrRepeatedAlert() {
         var tracker = MetricAlerts()
         let bad = Metric(label: "mem", value: "85%", severity: .warning)
