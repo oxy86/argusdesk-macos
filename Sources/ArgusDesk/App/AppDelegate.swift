@@ -279,6 +279,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Persists preference changes and immediately restarts refresh timers.
     private func apply(preferences: AppPreferences) {
+        let loadedConfig: LoadedConfig?
+        do {
+            var loader = ConfigLoader()
+            loadedConfig = try preferences.configFilePath.map { try loader.load(from: $0) }
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.messageText = "Could not load configuration"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            return
+        }
+
         preferencesStore.save(preferences)
         configFilePath = preferences.configFilePath
         localRefreshSeconds = preferences.localRefreshSeconds
@@ -296,19 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         refreshSchedule.resetDeadlines()
         startRemoteRefreshTimer()
 
-        // Reload configuration if the user changed the config path.
-        if preferences.configFilePath != nil {
-            reloadConfiguration(from: preferences.configFilePath)
-            refreshLocalStatus()
-            refreshRemoteStatus(severityEngine: SeverityEngine(thresholds: thresholds))
-        }
-    }
-
-    /// Reloads the configuration from the given path (or default search).
-    private func reloadConfiguration(from path: String?) {
-        do {
-            var configLoader = ConfigLoader()
-            let loadedConfig = try configLoader.load(from: path)
+        if let loadedConfig {
             configGeneration += 1
             refreshSchedule.resetDeadlines()
             serverConfigs = loadedConfig.config.servers
@@ -320,14 +320,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 servers: loadedConfig.config.servers,
                 validation: loadedConfig.validation
             )
-        } catch {
-            // If reloading fails, keep existing state.
-            configSourceName = "config reload failed"
-            dashboardViewModel = dashboardViewModel.replacing(
-                config: AppConfig(),
-                servers: [],
-                validation: nil
-            )
+            refreshLocalStatus()
+            refreshRemoteStatus(severityEngine: SeverityEngine(thresholds: thresholds))
         }
     }
 }
