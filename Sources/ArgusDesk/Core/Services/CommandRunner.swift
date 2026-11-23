@@ -12,56 +12,60 @@ struct CommandRunner {
     /// This method blocks the current thread until the command exits or times
     /// out, so callers should run it away from the main actor.
     func run(executable: String, arguments: [String], timeoutSeconds: TimeInterval) -> CommandResult {
-        let process = Process()
-        let stdout = Pipe()
-        let stderr = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = stdout
-        process.standardError = stderr
-
+        let fileManager = FileManager.default
+        let outputDirectory = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         do {
+            try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: false,
+                                            attributes: [.posixPermissions: 0o700])
+            defer { try? fileManager.removeItem(at: outputDirectory) }
+
+            // Regular files let the child write both streams without waiting for a pipe reader.
+            let stdoutURL = outputDirectory.appendingPathComponent("stdout")
+            let stderrURL = outputDirectory.appendingPathComponent("stderr")
+            try Data().write(to: stdoutURL)
+            try Data().write(to: stderrURL)
+            let stdout = try FileHandle(forWritingTo: stdoutURL)
+            defer { try? stdout.close() }
+            let stderr = try FileHandle(forWritingTo: stderrURL)
+            defer { try? stderr.close() }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.standardOutput = stdout
+            process.standardError = stderr
             try process.run()
-        } catch {
-            return CommandResult(
-                exitCode: -1,
-                stdout: "",
-                stderr: error.localizedDescription,
-                timedOut: false
-            )
-        }
 
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-
-        let timedOut = process.isRunning
-        if timedOut {
-            process.terminate()
-
-            let stopDeadline = Date().addingTimeInterval(0.5)
-            while process.isRunning && Date() < stopDeadline {
+            let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
+            while process.isRunning && ProcessInfo.processInfo.systemUptime < deadline {
                 Thread.sleep(forTimeInterval: 0.05)
             }
 
-            if process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
+            let timedOut = process.isRunning
+            if timedOut {
+                process.terminate()
+
+                let stopDeadline = ProcessInfo.processInfo.systemUptime + 0.5
+                while process.isRunning && ProcessInfo.processInfo.systemUptime < stopDeadline {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
             }
+
+            process.waitUntilExit()
+
+            return CommandResult(
+                exitCode: timedOut ? -1 : process.terminationStatus,
+                stdout: String(decoding: try Data(contentsOf: stdoutURL), as: UTF8.self),
+                stderr: String(decoding: try Data(contentsOf: stderrURL), as: UTF8.self),
+                timedOut: timedOut
+            )
+        } catch {
+            return CommandResult(exitCode: -1, stdout: "", stderr: error.localizedDescription, timedOut: false)
         }
-
-        process.waitUntilExit()
-
-        let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-
-        return CommandResult(
-            exitCode: timedOut ? -1 : Int32(process.terminationStatus),
-            stdout: String(decoding: stdoutData, as: UTF8.self),
-            stderr: String(decoding: stderrData, as: UTF8.self),
-            timedOut: timedOut
-        )
     }
 }
 
