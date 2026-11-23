@@ -266,7 +266,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 return ConfigSaver.saveRefreshIntervals(to: URL(fileURLWithPath: path), values: values, localLabel: label)
             },
             apply: { [weak self] preferences in
-                self?.apply(preferences: preferences)
+                guard let self else { return }
+                let pathChanged = self.configFilePath != preferences.configFilePath
+                let previousGeneration = self.configGeneration
+                self.apply(preferences: preferences)
+
+                guard pathChanged, self.configGeneration != previousGeneration,
+                      let window = self.preferencesWindowController?.window,
+                      window.isVisible else { return }
+                let origin = window.frame.origin
+                window.close()
+                self.showPreferences()
+                self.preferencesWindowController?.window?.setFrameOrigin(origin)
             },
             testNotification: { [weak self] in
                 guard let self else { return "ArgusDesk is no longer running." }
